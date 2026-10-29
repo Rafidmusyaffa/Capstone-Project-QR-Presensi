@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2'><rect width='5' height='5' x='3' y='3' rx='1'/><rect width='5' height='5' x='16' y='3' rx='1'/><rect width='5' height='5' x='3' y='16' rx='1'/><path d='M21 16h-3a2 2 0 0 0-2 2v3'/><path d='M21 21v.01'/><path d='M12 7v3a2 2 0 0 1-2 2H7'/><path d='M3 12h.01'/><path d='M12 3h.01'/><path d='M12 16v.01'/><path d='M16 12h1'/><path d='M21 12v.01'/><path d='M12 21v-1'/></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistem Presensi Mahasiswa Berbasis QR Code</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      window.addEventListener('error', function(e) {
+        var d = document.getElementById('debug-error');
+        if (!d) {
+          d = document.createElement('div');
+          d.id = 'debug-error';
+          d.style.cssText = 'position:fixed;top:15px;left:15px;right:15px;background:#fff1f2;color:#9f1239;padding:20px;border-radius:12px;font-family:sans-serif;font-size:13px;border:2px solid #fda4af;z-index:999999;box-shadow:0 10px 25px rgba(0,0,0,0.2);';
+          document.body.appendChild(d);
+        }
+        d.innerHTML += '<strong>JavaScript Error:</strong> ' + e.message + '<br><small>' + (e.filename || '') + ':' + (e.lineno || '') + '</small><br><pre style="white-space:pre-wrap;margin-top:10px;background:#fff;padding:10px;border-radius:6px;font-size:11px;">' + (e.error && e.error.stack ? e.error.stack : '') + '</pre>';
+      });
+    </script>
+  </head>
+  <body class="bg-slate-900 text-slate-100 antialiased">
+    <div id="root">
+      <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; text-align: center;">
+        <div style="width: 50px; height: 50px; border: 4px solid #334155; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 20px;"></div>
+        <h2 style="font-size: 20px; margin: 0 0 8px; font-weight: 700; letter-spacing: -0.5px;">Sistem Presensi Mahasiswa</h2>
+        <p style="font-size: 13px; color: #94a3b8; margin: 0;">Memuat aplikasi presensi berbasis QR Code...</p>
+        <style>
+          @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+      </div>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
