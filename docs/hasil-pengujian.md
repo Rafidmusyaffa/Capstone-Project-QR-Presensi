@@ -1,6 +1,6 @@
 # Hasil Pengujian Sistem
 
-Dijalankan: 2026-10-30 15:12:19 WIB (Asia/Jakarta) · Node.js v24.11.0 · perintah `npm test`
+Dijalankan: 2026-10-30 19:49:45 WIB (Asia/Jakarta) · Node.js v24.11.0 · perintah `npm test`
 
 Pengujian black-box dengan teknik Equivalence Partitioning (EP) dan Boundary Value Analysis (BVA).
 Server dijalankan otomatis dengan database sementara dan data demo. Sesi uji dibuat untuk hari esok dengan aturan waktu:
@@ -21,11 +21,11 @@ Waktu scan disimulasikan lewat `simulated_now`, yang hanya diterima server jika 
 | TC-05 | Klasifikasi Waktu Presensi | BVA | Scan tepat pada batas present_until (18:15:00) | PRESENT | PRESENT | Lulus |
 | TC-06 | Klasifikasi Waktu Presensi | BVA | Scan 1 detik setelah present_until (18:15:01) dan tepat pada late_until (19:00:00) | LATE untuk kedua scan | 18:15:01: LATE; 19:00:00: LATE | Lulus |
 | TC-07 | Klasifikasi Waktu Presensi | BVA | Scan 1 detik setelah late_until (19:00:01) | ATTENDANCE_PERIOD_CLOSED, tidak ada record | ATTENDANCE_PERIOD_CLOSED, record = 0 | Lulus |
-| TC-08 | Penutupan Sesi Otomatis | BVA | syncSessionStatuses dengan waktu simulasi tepat end_time (20:00:00) lalu 20:00:01 | 20:00:00 belum final; 20:00:01 FINALIZED dan mahasiswa yang belum scan menjadi ABSENT | 20:00:00: ATTENDANCE_CLOSED; 20:00:01: FINALIZED; Mahasiswa Uji: ABSENT; ABSENT = 1; Rafid/Anisa/Dimas tetap PRESENT/LATE/LATE | Lulus |
+| TC-08 | Penutupan Sesi Otomatis | BVA | syncSessionStatuses dengan waktu simulasi tepat end_time (20:00:00) lalu 20:00:01 | 20:00:00 belum final; 20:00:01 FINALIZED dan mahasiswa yang belum scan menjadi ABSENT | 20:00:00: ATTENDANCE_CLOSED; 20:00:01: FINALIZED; Mahasiswa Uji: ABSENT; ABSENT = 1; Rafid/Syahrul/Lina tetap PRESENT/LATE/LATE | Lulus |
 | TC-09 | Keamanan: Kerahasiaan Token QR | EP | Mahasiswa (mahasiswa1) mengakses daftar mahasiswa dan detail kelasnya | Daftar mahasiswa ditolak (403); detail kelas tidak memuat token QR mahasiswa lain | daftar mahasiswa: HTTP 403; detail kelas: HTTP 200, token lain bocor = 0 | Lulus |
 | TC-10 | Keamanan: Otorisasi Dosen | EP | Dosen lain (dosen2) melakukan scan pada sesi kelas milik dosen1 | FORBIDDEN (HTTP 403), tidak ada record | FORBIDDEN (HTTP 403), record = 0 | Lulus |
 | TC-11 | Keamanan: Waktu Server | EP | ALLOW_SIMULATED_TIME tidak aktif: scan dengan simulated_now / simulated_time besok 18:10 (dalam periode hadir) | Waktu simulasi diabaikan, jam server dipakai -> SESSION_NOT_STARTED, tidak ada record | simulated_now: SESSION_NOT_STARTED; simulated_time: SESSION_NOT_STARTED; record = 0 | Lulus |
-| TC-12 | Validasi QR (Status Mahasiswa) | EP | Admin menonaktifkan mahasiswa terdaftar (Dimas), lalu QR-nya di-scan pada sesi aktif (18:05:00) | STUDENT_INACTIVE, tidak ada record; setelah diaktifkan kembali scan diterima | nonaktif: STUDENT_INACTIVE, record = 0; aktif kembali: PRESENT | Lulus |
+| TC-12 | Validasi QR (Status Mahasiswa) | EP | Admin menonaktifkan mahasiswa terdaftar (Lina), lalu QR-nya di-scan pada sesi aktif (18:05:00) | STUDENT_INACTIVE, tidak ada record; setelah diaktifkan kembali scan diterima | nonaktif: STUDENT_INACTIVE, record = 0; aktif kembali: PRESENT | Lulus |
 | TC-13 | Keamanan: Sesi Login | EP | Request API dengan token login tidak valid / kedaluwarsa | HTTP 401 dengan kode TOKEN_INVALID (client diarahkan login ulang) | HTTP 401, TOKEN_INVALID | Lulus |
 | TC-14 | Validasi Input | EP | Mengirim body JSON rusak ke endpoint scan | HTTP 400 berformat JSON dengan kode INVALID_JSON | HTTP 400, JSON = true, INVALID_JSON | Lulus |
 | TC-15 | Keamanan: Data Identitas | EP | Mahasiswa mengubah nama/prodi sendiri lewat PUT /api/auth/profile | HTTP 403, data mahasiswa tidak berubah | HTTP 403; nama = Rafid Musyaffa, prodi = Sistem Informasi | Lulus |

@@ -77,8 +77,8 @@ Semua akun berikut dibuat oleh seed di `server/db.js`.
 | Dosen | `dosen1` | `dosen123` | Dr. Budi Santoso, M.Kom | Pengampu **SI-05 Database Systems** (Rabu 18:00–20:00, Lab Komputer 3) |
 | Dosen | `dosen2` | `dosen123` | Siti Aminah, S.Kom., M.T | Pengampu **SI-07 Pemrograman Web Lanjut** (Kamis 13:00–15:30, Ruang Teori 204) |
 | Mahasiswa | `mahasiswa1` | `mhs123` | Rafid Musyaffa (220101001) | Peserta SI-05 |
-| Mahasiswa | `mahasiswa2` | `mhs123` | Anisa Rahmawati (220101002) | Peserta SI-05 dan SI-07 |
-| Mahasiswa | `mahasiswa3` | `mhs123` | Dimas Pratama (220101003) | Peserta SI-05 |
+| Mahasiswa | `mahasiswa2` | `mhs123` | Muhammad Syahrul (220101002) | Peserta SI-05 dan SI-07 |
+| Mahasiswa | `mahasiswa3` | `mhs123` | Lina Dewi Pakpahan (220101003) | Peserta SI-05 |
 | Mahasiswa | `mahasiswa4` | `mhs123` | Fajar Nugraha (220101004) | Peserta SI-07 saja. Cocok untuk menguji penolakan "tidak terdaftar di kelas" pada sesi SI-05 |
 
 Seed juga membuat satu sesi demo **SI-05 Pertemuan #5** pada tanggal server dijalankan (mulai 00:00, hadir s/d 23:45, telat s/d 23:55, selesai 23:59). Sesi ini langsung bisa dipakai untuk mencoba scan. Token QR demo dibuat acak setiap kali seed berjalan. Lihat tokennya di kartu QR mahasiswa atau di menu admin.

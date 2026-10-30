@@ -158,8 +158,8 @@ async function runMainSuite(dbPath) {
   const students = await api('GET', '/api/users/students', adminToken);
   const byNim = (nim) => students.data.find((s) => s.nim === nim);
   const rafid = byNim('220101001'); // terdaftar SI-05
-  const anisa = byNim('220101002'); // terdaftar SI-05
-  const dimas = byNim('220101003'); // terdaftar SI-05
+  const syahrul = byNim('220101002'); // terdaftar SI-05
+  const lina = byNim('220101003'); // terdaftar SI-05
   const fajar = byNim('220101004'); // TIDAK terdaftar SI-05
 
   // Mahasiswa uji tambahan, didaftarkan ke SI-05 dan sengaja tidak pernah tercatat hadir
@@ -255,8 +255,8 @@ async function runMainSuite(dbPath) {
     scenario: 'Scan 1 detik setelah present_until (18:15:01) dan tepat pada late_until (19:00:00)',
     expected: 'LATE untuk kedua scan',
   }, async () => {
-    const afterPresent = scanOutcome(await scan(anisa.permanent_qr_token, '18:15:01'));
-    const atLate = scanOutcome(await scan(dimas.permanent_qr_token, '19:00:00'));
+    const afterPresent = scanOutcome(await scan(syahrul.permanent_qr_token, '18:15:01'));
+    const atLate = scanOutcome(await scan(lina.permanent_qr_token, '19:00:00'));
     return {
       actual: `18:15:01: ${afterPresent}; 19:00:00: ${atLate}`,
       pass: afterPresent === 'LATE' && atLate === 'LATE',
@@ -291,11 +291,11 @@ async function runMainSuite(dbPath) {
     const detail = await api('GET', `/api/sessions/${session.id}`, dosenToken);
     const statusById = Object.fromEntries(detail.data.students.map((s) => [s.student_id, s.attendance_status]));
     const absentUji = statusById[ujiId];
-    const kept = [statusById[rafid.id], statusById[anisa.id], statusById[dimas.id]].join('/');
+    const kept = [statusById[rafid.id], statusById[syahrul.id], statusById[lina.id]].join('/');
 
     return {
       actual: `20:00:00: ${atEnd}; 20:00:01: ${afterEnd}; Mahasiswa Uji: ${absentUji}; ` +
-        `ABSENT = ${detail.data.stats.absent}; Rafid/Anisa/Dimas tetap ${kept}`,
+        `ABSENT = ${detail.data.stats.absent}; Rafid/Syahrul/Lina tetap ${kept}`,
       pass: atEnd === 'ATTENDANCE_CLOSED' && afterEnd === 'FINALIZED' && absentUji === 'ABSENT' &&
         detail.data.stats.absent === 1 && kept === 'PRESENT/LATE/LATE',
     };
@@ -309,7 +309,7 @@ async function runMainSuite(dbPath) {
     const list = await api('GET', '/api/users/students', mhsToken);
     const cls = await api('GET', `/api/classes/${si05.id}`, mhsToken);
     const body = JSON.stringify(cls.data);
-    const leaked = [anisa, dimas].filter((s) => body.includes(s.permanent_qr_token)).length;
+    const leaked = [syahrul, lina].filter((s) => body.includes(s.permanent_qr_token)).length;
     return {
       actual: `daftar mahasiswa: HTTP ${list.status}; detail kelas: HTTP ${cls.status}, token lain bocor = ${leaked}`,
       pass: list.status === 403 && cls.status === 200 && leaked === 0,
@@ -336,18 +336,18 @@ async function runMainSuite(dbPath) {
 
   await testCase({
     id: 'TC-12', modul: 'Validasi QR (Status Mahasiswa)', teknik: 'EP',
-    scenario: 'Admin menonaktifkan mahasiswa terdaftar (Dimas), lalu QR-nya di-scan pada sesi aktif (18:05:00)',
+    scenario: 'Admin menonaktifkan mahasiswa terdaftar (Lina), lalu QR-nya di-scan pada sesi aktif (18:05:00)',
     expected: 'STUDENT_INACTIVE, tidak ada record; setelah diaktifkan kembali scan diterima',
   }, async () => {
     const other = await createTomorrowSession(dosenToken, si05.id, 3);
     const scanOther = (time) => api('POST', '/api/attendance/scan', dosenToken, {
-      session_id: other.id, qr_data: dimas.permanent_qr_token, simulated_now: `${other.date}T${time}`,
+      session_id: other.id, qr_data: lina.permanent_qr_token, simulated_now: `${other.date}T${time}`,
     });
-    await api('PATCH', `/api/users/students/${dimas.id}/status`, adminToken, { is_active: false });
+    await api('PATCH', `/api/users/students/${lina.id}/status`, adminToken, { is_active: false });
     const inactive = scanOther('18:05:00');
     const inactiveOutcome = scanOutcome(await inactive);
     const records = db.prepare('SELECT COUNT(*) AS n FROM attendances WHERE session_id = ?').get(other.id).n;
-    await api('PATCH', `/api/users/students/${dimas.id}/status`, adminToken, { is_active: true });
+    await api('PATCH', `/api/users/students/${lina.id}/status`, adminToken, { is_active: true });
     const reactivated = scanOutcome(await scanOther('18:06:00'));
     return {
       actual: `nonaktif: ${inactiveOutcome}, record = ${records}; aktif kembali: ${reactivated}`,

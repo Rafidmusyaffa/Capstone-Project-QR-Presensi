@@ -189,8 +189,8 @@ function seedData() {
   // 3. Students (token QR acak 'PQR-…', format sama dengan mahasiswa baru)
   const insertStudent = db.prepare('INSERT INTO students (user_id, nim, name, major, permanent_qr_token) VALUES (?, ?, ?, ?, ?)');
   const s1 = insertStudent.run(mhs1Res.lastInsertRowid, '220101001', 'Rafid Musyaffa', 'Sistem Informasi', generateQrToken());
-  const s2 = insertStudent.run(mhs2Res.lastInsertRowid, '220101002', 'Anisa Rahmawati', 'Sistem Informasi', generateQrToken());
-  const s3 = insertStudent.run(mhs3Res.lastInsertRowid, '220101003', 'Dimas Pratama', 'Sistem Informasi', generateQrToken());
+  const s2 = insertStudent.run(mhs2Res.lastInsertRowid, '220101002', 'Muhammad Syahrul', 'Sistem Informasi', generateQrToken());
+  const s3 = insertStudent.run(mhs3Res.lastInsertRowid, '220101003', 'Lina Dewi Pakpahan', 'Sistem Informasi', generateQrToken());
   const s4 = insertStudent.run(mhs4Res.lastInsertRowid, '220101004', 'Fajar Nugraha', 'Informatika', generateQrToken());
 
   // 4. Classes
