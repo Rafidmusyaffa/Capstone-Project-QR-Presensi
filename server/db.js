@@ -2,6 +2,7 @@ const { DatabaseSync } = require('node:sqlite');
 const path = require('node:path');
 const bcrypt = require('bcryptjs');
 const { nowParts, computePhase } = require('./time');
+const { generateQrToken } = require('./qrToken');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, 'presensi.db');
 const db = new DatabaseSync(dbPath);
@@ -185,12 +186,12 @@ function seedData() {
   const l1 = insertLecturer.run(dosen1Res.lastInsertRowid, '198001012005011001', 'Dr. Budi Santoso, M.Kom', 'budi.santoso@univ.ac.id');
   const l2 = insertLecturer.run(dosen2Res.lastInsertRowid, '198505122008012002', 'Siti Aminah, S.Kom., M.T', 'siti.aminah@univ.ac.id');
 
-  // 3. Students (Permanent QR Code format: QR-STD-{NIM}-{TOKEN})
+  // 3. Students (token QR acak 'PQR-…', format sama dengan mahasiswa baru)
   const insertStudent = db.prepare('INSERT INTO students (user_id, nim, name, major, permanent_qr_token) VALUES (?, ?, ?, ?, ?)');
-  const s1 = insertStudent.run(mhs1Res.lastInsertRowid, '220101001', 'Rafid Musyaffa', 'Sistem Informasi', 'QR-STD-220101001-A9F3');
-  const s2 = insertStudent.run(mhs2Res.lastInsertRowid, '220101002', 'Anisa Rahmawati', 'Sistem Informasi', 'QR-STD-220101002-B7C1');
-  const s3 = insertStudent.run(mhs3Res.lastInsertRowid, '220101003', 'Dimas Pratama', 'Sistem Informasi', 'QR-STD-220101003-C4D8');
-  const s4 = insertStudent.run(mhs4Res.lastInsertRowid, '220101004', 'Fajar Nugraha', 'Informatika', 'QR-STD-220101004-E2K9');
+  const s1 = insertStudent.run(mhs1Res.lastInsertRowid, '220101001', 'Rafid Musyaffa', 'Sistem Informasi', generateQrToken());
+  const s2 = insertStudent.run(mhs2Res.lastInsertRowid, '220101002', 'Anisa Rahmawati', 'Sistem Informasi', generateQrToken());
+  const s3 = insertStudent.run(mhs3Res.lastInsertRowid, '220101003', 'Dimas Pratama', 'Sistem Informasi', generateQrToken());
+  const s4 = insertStudent.run(mhs4Res.lastInsertRowid, '220101004', 'Fajar Nugraha', 'Informatika', generateQrToken());
 
   // 4. Classes
   const insertClass = db.prepare('INSERT INTO classes (code, name, lecturer_id, academic_year, semester) VALUES (?, ?, ?, ?, ?)');

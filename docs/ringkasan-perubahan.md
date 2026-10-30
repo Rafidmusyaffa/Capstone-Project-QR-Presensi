@@ -125,7 +125,7 @@ Validasi `POST /api/sessions`:
 
 ## 5. Keamanan
 
-1. **Token QR acak:** `PQR-` + 16 byte acak (base64url). Token tidak bisa ditebak dari NIM. Data demo lama tetap memakai format `QR-STD-{NIM}-{kode}`.
+1. **Token QR acak:** `PQR-` + 16 byte acak (base64url). Token tidak bisa ditebak dari NIM. Data demo (seed) juga memakai format acak yang sama (`server/qrToken.js`).
 2. **Kerahasiaan token QR:** token hanya terlihat oleh admin. Mahasiswa melihat tokennya sendiri lewat `/api/auth/me`. Dosen dan mahasiswa lain tidak menerima token di daftar mahasiswa, roster, maupun detail sesi.
 3. **Otorisasi per kelas (`canManageClass`):** dosen hanya bisa mengelola kelas yang diampunya. Ini berlaku untuk scan, manual, nilai, hapus presensi, detail/buat/finalisasi/hapus sesi, roster, enroll/unenroll, dan rekap kelas. Mahasiswa hanya bisa melihat kelas tempat ia terdaftar.
 4. **Endpoint dibatasi:** `GET /api/users/students` dan `GET /api/reports/dashboard` hanya untuk admin dan dosen.

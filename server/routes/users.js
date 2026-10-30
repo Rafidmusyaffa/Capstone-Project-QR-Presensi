@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const crypto = require('node:crypto');
 const db = require('../db');
 const { authenticateToken, requireRole } = require('../auth');
 const { hideQrToken } = require('../access');
+const { generateQrToken } = require('../qrToken');
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -26,11 +26,6 @@ function inTransaction(fn) {
     db.exec('ROLLBACK');
     throw err;
   }
-}
-
-// Token QR permanen: 128-bit acak, tidak bisa ditebak dari NIM
-function generateQrToken() {
-  return 'PQR-' + crypto.randomBytes(16).toString('base64url');
 }
 
 // Students list (token QR hanya untuk admin)

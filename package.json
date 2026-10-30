@@ -9,8 +9,8 @@
     "dev:server": "node server/index.js",
     "dev:client": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
-    "install:all": "npm install && npm --prefix client install",
-    "postinstall": "npm --prefix client install && npm --prefix client run build",
+    "install:all": "npm install",
+    "postinstall": "npm --prefix client install --include=dev && npm --prefix client run build",
     "test": "node test-capstone.js"
   },
   "keywords": [
@@ -22,6 +22,9 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=22.5"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
