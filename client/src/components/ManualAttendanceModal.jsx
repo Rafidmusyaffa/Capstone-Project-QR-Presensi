@@ -1,25 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { apiRequest } from '../api';
 import { X, CheckCircle2, AlertTriangle, XCircle, UserCheck, AlertCircle } from 'lucide-react';
 
+// Form diisi dari props saat modal dipasang; pemanggil memasang ulang modal per mahasiswa (prop key)
 export default function ManualAttendanceModal({ session, student, isOpen, onClose, onSuccess }) {
-  const [selectedStudentId, setSelectedStudentId] = useState('');
-  const [status, setStatus] = useState('PRESENT');
-  const [remarks, setRemarks] = useState('');
+  const [selectedStudentId, setSelectedStudentId] = useState(student?.student_id ?? '');
+  const [status, setStatus] = useState(student?.attendance_status || 'PRESENT');
+  const [remarks, setRemarks] = useState(student?.remarks || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (student) {
-      setSelectedStudentId(student.student_id);
-      setStatus(student.attendance_status || 'PRESENT');
-      setRemarks(student.remarks || '');
-    } else {
-      setSelectedStudentId('');
-      setStatus('PRESENT');
-      setRemarks('');
-    }
-  }, [student, isOpen]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,7 +42,7 @@ export default function ManualAttendanceModal({ session, student, isOpen, onClos
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
           <div className="flex items-center gap-2">

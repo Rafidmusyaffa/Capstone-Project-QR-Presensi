@@ -4,22 +4,60 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { generateToken, authenticateToken } = require('../auth');
 
+// Rate-limit login in-memory: maksimal 10 percobaan gagal per 15 menit per IP+username
+const LOGIN_MAX_FAILURES = 10;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const loginFailures = new Map();
+
+function loginKey(req, username) {
+  return `${req.ip}|${String(username).toLowerCase()}`;
+}
+
+function getFailureEntry(key) {
+  const entry = loginFailures.get(key);
+  if (entry && Date.now() - entry.firstAt > LOGIN_WINDOW_MS) {
+    loginFailures.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function recordFailure(key) {
+  const entry = getFailureEntry(key);
+  if (entry) entry.count++;
+  else loginFailures.set(key, { count: 1, firstAt: Date.now() });
+}
+
+// Bersihkan entri kedaluwarsa agar Map tidak tumbuh tanpa batas
+setInterval(() => {
+  for (const key of loginFailures.keys()) getFailureEntry(key);
+}, LOGIN_WINDOW_MS).unref();
+
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
 
-  if (!username || !password) {
+  if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ error: 'Username dan password wajib diisi.' });
   }
 
+  const key = loginKey(req, username);
+  const failures = getFailureEntry(key);
+  if (failures && failures.count >= LOGIN_MAX_FAILURES) {
+    const retryAfterSec = Math.ceil((failures.firstAt + LOGIN_WINDOW_MS - Date.now()) / 1000);
+    res.set('Retry-After', String(retryAfterSec));
+    return res.status(429).json({
+      code: 'TOO_MANY_ATTEMPTS',
+      error: `Terlalu banyak percobaan login gagal. Coba lagi dalam ${Math.ceil(retryAfterSec / 60)} menit.`,
+    });
+  }
+
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-  if (!user) {
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    recordFailure(key);
     return res.status(401).json({ error: 'Username atau password salah.' });
   }
 
-  const isMatch = bcrypt.compareSync(password, user.password_hash);
-  if (!isMatch) {
-    return res.status(401).json({ error: 'Username atau password salah.' });
-  }
+  loginFailures.delete(key);
 
   let profile = { id: user.id, username: user.username, role: user.role };
 
@@ -66,17 +104,30 @@ router.get('/me', authenticateToken, (req, res) => {
 });
 
 // Update Profile for current logged-in user
+// Data identitas mahasiswa (nama, NIM, prodi) hanya boleh diubah admin.
 router.put('/profile', authenticateToken, (req, res) => {
-  const { name, email, major } = req.body;
   const userId = req.user.id;
 
-  try {
-    if (req.user.role === 'dosen') {
-      db.prepare('UPDATE lecturers SET name = ?, email = ? WHERE user_id = ?').run(name, email || '', userId);
-    } else if (req.user.role === 'mahasiswa' || req.user.role === 'student') {
-      db.prepare('UPDATE students SET name = ?, major = ? WHERE user_id = ?').run(name, major || '', userId);
-    }
+  if (req.user.role !== 'dosen') {
+    return res.status(403).json({
+      code: 'FORBIDDEN',
+      error: req.user.role === 'mahasiswa'
+        ? 'Data identitas mahasiswa hanya dapat diubah oleh admin.'
+        : 'Profil akun ini tidak dapat diubah.',
+    });
+  }
 
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  const email = typeof req.body.email === 'string' ? req.body.email.trim() : '';
+  if (!name) {
+    return res.status(400).json({ error: 'Nama wajib diisi.' });
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Format email tidak valid.' });
+  }
+
+  try {
+    db.prepare('UPDATE lecturers SET name = ?, email = ? WHERE user_id = ?').run(name, email, userId);
     res.json({ message: 'Profil berhasil diperbarui.' });
   } catch (err) {
     res.status(500).json({ error: 'Gagal memperbarui profil: ' + err.message });
@@ -88,8 +139,12 @@ router.put('/change-password', authenticateToken, (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const userId = req.user.id;
 
-  if (!newPassword || newPassword.trim().length < 4) {
-    return res.status(400).json({ error: 'Password baru minimal 4 karakter.' });
+  if (!currentPassword || typeof currentPassword !== 'string') {
+    return res.status(400).json({ error: 'Password lama wajib diisi.' });
+  }
+
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 6) {
+    return res.status(400).json({ error: 'Password baru minimal 6 karakter.' });
   }
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
@@ -97,12 +152,8 @@ router.put('/change-password', authenticateToken, (req, res) => {
     return res.status(404).json({ error: 'User tidak ditemukan.' });
   }
 
-  // If current password provided, check it
-  if (currentPassword) {
-    const isMatch = bcrypt.compareSync(currentPassword, user.password_hash);
-    if (!isMatch) {
-      return res.status(400).json({ error: 'Password lama tidak sesuai.' });
-    }
+  if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
+    return res.status(400).json({ error: 'Password lama tidak sesuai.' });
   }
 
   try {

@@ -13,7 +13,7 @@ export function getCurrentUser() {
   const user = localStorage.getItem('presensi_user');
   try {
     return user ? JSON.parse(user) : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -37,6 +37,16 @@ export async function apiRequest(endpoint, options = {}) {
   });
 
   const data = await res.json().catch(() => ({}));
+
+  // Token kedaluwarsa/tidak valid: bersihkan sesi login dan beri tahu App
+  if (res.status === 401 && token && endpoint !== '/auth/login') {
+    setToken(null);
+    setCurrentUser(null);
+    window.dispatchEvent(new CustomEvent('auth:expired', {
+      detail: data.error || 'Sesi login Anda telah berakhir. Silakan login ulang.',
+    }));
+  }
+
   if (!res.ok) {
     const errorMsg = data.message || data.error || 'Terjadi kesalahan sistem.';
     const err = new Error(errorMsg);

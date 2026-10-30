@@ -6,6 +6,10 @@ client/node_modules/
 # Note: If you want to deploy directly without build step on server, comment out client/dist/
 # client/dist/
 
+# SQLite Database (dibuat & di-seed otomatis saat server start)
+*.db
+*.sqlite
+
 # SQLite Database Journal / Lock files
 *.db-journal
 *.db-wal

@@ -1,14 +1,67 @@
 const { DatabaseSync } = require('node:sqlite');
 const path = require('node:path');
 const bcrypt = require('bcryptjs');
+const { nowParts, computePhase } = require('./time');
 
-const dbPath = path.join(__dirname, 'presensi.db');
+const dbPath = process.env.DB_PATH || path.join(__dirname, 'presensi.db');
 const db = new DatabaseSync(dbPath);
 
 // Enable foreign keys and WAL mode for reliability
 db.exec('PRAGMA foreign_keys = ON;');
+// Tunggu (bukan langsung gagal) jika DB sedang dikunci proses lain, mis. test suite
+db.exec('PRAGMA busy_timeout = 5000;');
+
+const SESSION_STATUS_CHECK = "('SCHEDULED', 'ACTIVE', 'ATTENDANCE_CLOSED', 'CLOSED', 'FINALIZED')";
+
+/**
+ * Migrasi DB lama yang hanya mengenal status ACTIVE/CLOSED.
+ * SQLite tidak bisa mengubah CHECK constraint, jadi tabel dibangun ulang.
+ * Sesi ACTIVE lama dijadikan SCHEDULED; scheduler akan memajukannya sesuai jam.
+ */
+function migrateSessionStatuses() {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'attendance_sessions'").get();
+  if (!row || row.sql.includes('FINALIZED')) return;
+
+  console.log('Migrasi tabel attendance_sessions ke 5 status sesi...');
+  db.exec('PRAGMA foreign_keys = OFF;');
+  try {
+    db.exec('BEGIN');
+    db.exec(`
+      CREATE TABLE attendance_sessions_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_code TEXT UNIQUE NOT NULL,
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        meeting_number INTEGER NOT NULL,
+        meeting_date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        present_until TEXT NOT NULL,
+        late_until TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        status TEXT CHECK(status IN ${SESSION_STATUS_CHECK}) DEFAULT 'SCHEDULED',
+        created_by INTEGER REFERENCES users(id),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        finalized_at DATETIME DEFAULT NULL
+      );
+      INSERT INTO attendance_sessions_new
+        (id, session_code, class_id, meeting_number, meeting_date, start_time, present_until, late_until, end_time, status, created_by, created_at)
+      SELECT id, session_code, class_id, meeting_number, meeting_date, start_time, present_until, late_until, end_time,
+        CASE WHEN status = 'CLOSED' THEN 'CLOSED' ELSE 'SCHEDULED' END, created_by, created_at
+      FROM attendance_sessions;
+      DROP TABLE attendance_sessions;
+      ALTER TABLE attendance_sessions_new RENAME TO attendance_sessions;
+    `);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON;');
+  }
+}
 
 function initDatabase() {
+  migrateSessionStatuses();
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,6 +87,7 @@ function initDatabase() {
       name TEXT NOT NULL,
       major TEXT NOT NULL,
       permanent_qr_token TEXT UNIQUE NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -73,9 +127,10 @@ function initDatabase() {
       present_until TEXT NOT NULL,
       late_until TEXT NOT NULL,
       end_time TEXT NOT NULL,
-      status TEXT CHECK(status IN ('ACTIVE', 'CLOSED')) DEFAULT 'ACTIVE',
+      status TEXT CHECK(status IN ${SESSION_STATUS_CHECK}) DEFAULT 'SCHEDULED',
       created_by INTEGER REFERENCES users(id),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      finalized_at DATETIME DEFAULT NULL
     );
 
     CREATE TABLE IF NOT EXISTS attendances (
@@ -93,6 +148,10 @@ function initDatabase() {
   // Safe migrations for session score / grading
   try { db.exec('ALTER TABLE attendances ADD COLUMN score REAL DEFAULT NULL;'); } catch (e) {}
   try { db.exec('ALTER TABLE attendances ADD COLUMN score_feedback TEXT DEFAULT NULL;'); } catch (e) {}
+  // BR-01: mahasiswa nonaktif tidak bisa presensi, tetapi riwayatnya tetap tersimpan
+  try { db.exec('ALTER TABLE students ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;'); } catch (e) {}
+  // Nomor pertemuan unik per kelas (gagal diam-diam jika DB lama sudah berisi data dobel)
+  try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_class_meeting ON attendance_sessions(class_id, meeting_number);'); } catch (e) {}
 
   seedData();
 }
@@ -100,6 +159,8 @@ function initDatabase() {
 function seedData() {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   if (userCount > 0) return;
+  // Data demo aktif secara default (Render free: DB di-seed ulang tiap start); SEED_DEMO=false mematikannya
+  if (process.env.SEED_DEMO === 'false') return;
 
   console.log('Seeding initial data for Presensi QR System...');
 
@@ -154,23 +215,30 @@ function seedData() {
 
   // 7. Initial Active Attendance Session for Testing & Demonstration
   // Let's create an active session for SI-05 meeting 5 with broad flexible test hours or current date
-  const today = new Date().toISOString().slice(0, 10);
+  const now = nowParts();
   const insertSession = db.prepare(`
     INSERT INTO attendance_sessions 
     (session_code, class_id, meeting_number, meeting_date, start_time, present_until, late_until, end_time, status, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
+  const demoSession = {
+    meeting_date: now.date,
+    start_time: '00:00',
+    present_until: '23:45',
+    late_until: '23:55',
+    end_time: '23:59',
+  };
   insertSession.run(
     'SES-SI05-M05',
     c1.lastInsertRowid,
     5,
-    today,
-    '00:00',
-    '23:45',
-    '23:55',
-    '23:59',
-    'ACTIVE',
+    demoSession.meeting_date,
+    demoSession.start_time,
+    demoSession.present_until,
+    demoSession.late_until,
+    demoSession.end_time,
+    computePhase(demoSession, now),
     adminRes.lastInsertRowid
   );
 

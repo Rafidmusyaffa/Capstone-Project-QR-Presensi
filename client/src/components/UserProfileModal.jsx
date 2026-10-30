@@ -33,8 +33,13 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
     setStatusMessage(null);
     setErrorMessage(null);
 
-    if (newPassword.length < 4) {
-      setErrorMessage('Password baru minimal 4 karakter.');
+    if (!currentPassword) {
+      setErrorMessage('Password lama wajib diisi.');
+      return;
+    }
+
+    if (newPassword.trim().length < 6) {
+      setErrorMessage('Password baru minimal 6 karakter.');
       return;
     }
 
@@ -90,7 +95,7 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between shrink-0">
@@ -181,16 +186,17 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
             )}
 
             <form onSubmit={handleChangePassword} className="space-y-3">
-              {/* Optional Current Password */}
+              {/* Current Password (wajib) */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Password Saat Ini (Opsional):
+                  Password Saat Ini:
                 </label>
                 <div className="relative">
                   <input
                     type={showCurrentPass ? 'text' : 'password'}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
                     placeholder="Masukkan password lama Anda"
                     className="w-full text-xs pl-3 pr-9 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
                   />
@@ -215,7 +221,7 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Masukkan password baru (min 4 karakter)"
+                    placeholder="Masukkan password baru (min 6 karakter)"
                     className="w-full text-xs pl-3 pr-9 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
                   />
                   <button

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { apiRequest, setToken, setCurrentUser } from '../api';
 
-export default function Login({ onLoginSuccess }) {
+export default function Login({ onLoginSuccess, notice }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -64,6 +64,13 @@ export default function Login({ onLoginSuccess }) {
             <h2 className="text-lg font-bold text-slate-900 tracking-tight">Selamat Datang</h2>
             <p className="text-xs text-slate-500 mt-0.5">Masuk untuk mengakses dashboard presensi</p>
           </div>
+
+          {notice && !error && (
+            <div className="mb-5 p-3.5 bg-amber-50/90 border border-amber-200/80 rounded-2xl text-xs text-amber-800 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+              <span className="font-medium">{notice}</span>
+            </div>
+          )}
 
           {error && (
             <div className="mb-5 p-3.5 bg-rose-50/90 border border-rose-200/80 rounded-2xl text-xs text-rose-700 flex items-start gap-2.5 animate-in fade-in duration-200">

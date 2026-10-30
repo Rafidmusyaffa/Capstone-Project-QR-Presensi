@@ -1,7 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api';
+import useAutoRefresh from '../useAutoRefresh';
 import ClassRosterModal from '../components/ClassRosterModal';
 import StudentCard from '../components/StudentCard';
+import SessionStatusBadge from '../components/SessionStatusBadge';
+import { LoadErrorBanner } from '../components/LoadError';
+import { SESSION_STATUSES } from '../sessionStatus';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Users,
@@ -24,16 +28,25 @@ import {
   Eye,
   EyeOff,
   QrCode,
+  RefreshCw,
+  FileText,
+  UserCheck,
+  UserX,
 } from 'lucide-react';
 
-export default function AdminDashboard({ user, onSelectSession, onViewClassReport }) {
-  const [activeTab, setActiveTab] = useState('overview'); // overview, students, lecturers, classes, sessions
+export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
+  // Tab terakhir diingat selama tab browser terbuka, agar "Kembali" dari detail sesi tidak reset ke Ringkasan
+  const [activeTab, setActiveTabState] = useState(() => sessionStorage.getItem('adminActiveTab') || 'overview'); // overview, students, lecturers, classes, sessions
+  const setActiveTab = (tab) => {
+    sessionStorage.setItem('adminActiveTab', tab);
+    setActiveTabState(tab);
+  };
   const [stats, setStats] = useState(null);
   const [students, setStudents] = useState([]);
   const [lecturers, setLecturers] = useState([]);
   const [classes, setClasses] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   // Student QR Code preview modal
   const [selectedStudentForQR, setSelectedStudentForQR] = useState(null);
@@ -126,13 +139,8 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
 
   const [formError, setFormError] = useState(null);
 
-  useEffect(() => {
-    fetchAll();
-  }, [sessionSortOrder]);
-
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     try {
-      setLoading(true);
       const [dash, std, lect, cls, ses] = await Promise.all([
         apiRequest('/reports/dashboard'),
         apiRequest('/users/students'),
@@ -145,15 +153,21 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
       setLecturers(lect);
       setClasses(cls);
       setSessions(ses);
-      if (lect.length > 0 && !classForm.lecturer_id) {
-        setClassForm((prev) => ({ ...prev, lecturer_id: lect[0].id }));
+      setLoadError(null);
+      if (lect.length > 0) {
+        setClassForm((prev) => (prev.lecturer_id ? prev : { ...prev, lecturer_id: lect[0].id }));
       }
     } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+      setLoadError(e);
     }
-  };
+  }, [sessionSortOrder]);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  // Status sesi & statistik ikut diperbarui tanpa refresh manual
+  useAutoRefresh(fetchAll);
 
   const handleDeleteSession = async (ses) => {
     if (
@@ -227,6 +241,40 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
       } catch (err) {
         alert(err.message);
       }
+    }
+  };
+
+  const handleRegenerateQr = async (student) => {
+    if (!confirm(`Buat ulang QR Code untuk "${student.name}" (NIM: ${student.nim})?\n\nQR lama akan langsung TIDAK BERLAKU dan kartu QR harus dicetak ulang.`)) {
+      return;
+    }
+    try {
+      const res = await apiRequest(`/users/students/${student.id}/regenerate-qr`, { method: 'POST' });
+      if (selectedStudentForQR?.id === student.id) {
+        setSelectedStudentForQR({ ...selectedStudentForQR, permanent_qr_token: res.permanent_qr_token });
+      }
+      fetchAll();
+      alert(res.message);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  // Mahasiswa nonaktif tetap bisa login & melihat riwayat, tetapi scan QR ditolak (BR-01)
+  const handleToggleStudentActive = async (student) => {
+    const activate = !student.is_active;
+    const question = activate
+      ? `Aktifkan kembali "${student.name}" (NIM: ${student.nim})?`
+      : `Nonaktifkan "${student.name}" (NIM: ${student.nim})?\n\nMahasiswa nonaktif tidak dapat melakukan presensi, tetapi riwayat presensinya tetap tersimpan.`;
+    if (!confirm(question)) return;
+    try {
+      await apiRequest(`/users/students/${student.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active: activate }),
+      });
+      fetchAll();
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -427,6 +475,8 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-7">
+      {loadError && <LoadErrorBanner error={loadError} onRetry={fetchAll} />}
+
       {/* Top Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-rose-950/80 to-slate-900 text-white p-7 shadow-xl shadow-slate-900/10 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-80 h-80 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -605,7 +655,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
       {/* TAB CONTENT: Students */}
       {activeTab === 'students' && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
               Total {students.length} mahasiswa terdaftar. Anda dapat menambah, mengedit identitas / akun, melihat QR code, atau menghapus mahasiswa.
             </p>
@@ -627,12 +677,13 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
                     <th className="py-3 px-4">Program Studi</th>
                     <th className="py-3 px-4">QR Code & Token Mahasiswa</th>
                     <th className="py-3 px-4">Username Akun</th>
+                    <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {students.map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-50/50">
+                    <tr key={s.id} className={`hover:bg-slate-50/50 ${s.is_active ? '' : 'bg-slate-50/80 text-slate-400'}`}>
                       <td className="py-3 px-4 font-mono font-bold text-slate-800">{s.nim}</td>
                       <td className="py-3 px-4 font-bold text-slate-900">{s.name}</td>
                       <td className="py-3 px-4 text-slate-600">{s.major}</td>
@@ -643,15 +694,21 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
                           title="Klik untuk melihat Kartu & memperbesar QR Code Mahasiswa"
                         >
                           <div className="p-1 bg-white rounded-xl border border-slate-200 shadow-2xs group-hover:scale-105 transition-transform flex items-center justify-center">
-                            <QRCodeSVG
-                              value={s.permanent_qr_token || s.nim}
-                              size={44}
-                              level="M"
-                            />
+                            {s.permanent_qr_token ? (
+                              <QRCodeSVG
+                                value={s.permanent_qr_token}
+                                size={44}
+                                level="M"
+                              />
+                            ) : (
+                              <div className="w-11 h-11 flex items-center justify-center text-slate-300">
+                                <QrCode className="w-6 h-6" />
+                              </div>
+                            )}
                           </div>
                           <div>
-                            <span className="font-mono text-xs font-bold text-slate-900 group-hover:text-indigo-600 block leading-tight">
-                              {s.permanent_qr_token}
+                            <span className="font-mono text-xs font-bold text-slate-900 group-hover:text-indigo-600 block leading-tight max-w-[180px] truncate">
+                              {s.permanent_qr_token || '—'}
                             </span>
                             <span className="text-[10px] text-indigo-600 font-semibold flex items-center gap-1 mt-0.5">
                               <Eye className="w-3 h-3" /> Perbesar & Cetak
@@ -660,14 +717,35 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
                         </div>
                       </td>
                       <td className="py-3 px-4 text-slate-500 font-mono">{s.username}</td>
+                      <td className="py-3 px-4">
+                        {s.is_active ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Aktif</span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">Nonaktif</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleToggleStudentActive(s)}
+                            className={`p-1.5 rounded-lg cursor-pointer transition-colors ${s.is_active ? 'bg-slate-100 hover:bg-slate-200 text-slate-600' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'}`}
+                            title={s.is_active ? 'Nonaktifkan Mahasiswa (tidak bisa presensi)' : 'Aktifkan Kembali Mahasiswa'}
+                          >
+                            {s.is_active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                          </button>
                           <button
                             onClick={() => setSelectedStudentForQR(s)}
                             className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg cursor-pointer transition-colors"
                             title="Lihat / Cetak QR Code Mahasiswa"
                           >
                             <QrCode className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleRegenerateQr(s)}
+                            className="p-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg cursor-pointer transition-colors"
+                            title="Buat Ulang QR (QR lama tidak berlaku lagi)"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleOpenEditStudent(s)}
@@ -697,7 +775,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
       {/* TAB CONTENT: Lecturers */}
       {activeTab === 'lecturers' && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
               Total {lecturers.length} dosen pengajar aktif. Anda dapat menambah, mengedit data / akun, atau menghapus dosen.
             </p>
@@ -758,7 +836,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
       {/* TAB CONTENT: Classes */}
       {activeTab === 'classes' && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
               Total {classes.length} kelas perkuliahan. Anda dapat menambah, mengedit kode/jadwal, atau menghapus kelas.
             </p>
@@ -807,6 +885,13 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
                     <Users className="w-3.5 h-3.5" /> Kelola Mahasiswa
                   </button>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onViewClassReport(cls.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl cursor-pointer transition-colors"
+                      title="Lihat rekap presensi & nilai kelas ini"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> Rekap
+                    </button>
                     <button
                       onClick={() => handleOpenEditClass(cls)}
                       className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl cursor-pointer transition-colors"
@@ -878,8 +963,9 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
                   className="bg-transparent text-xs text-slate-700 font-semibold focus:outline-hidden"
                 >
                   <option value="all">Semua Status</option>
-                  <option value="ACTIVE">ACTIVE Saja</option>
-                  <option value="CLOSED">CLOSED Saja</option>
+                  {SESSION_STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label} Saja</option>
+                  ))}
                 </select>
               </div>
 
@@ -948,15 +1034,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
                           <div className="text-[10px] text-slate-400">Tenggat Telat: {ses.late_until}</div>
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              ses.status === 'ACTIVE'
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 animate-pulse'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {ses.status}
-                          </span>
+                          <SessionStatusBadge status={ses.status} size="sm" />
                         </td>
                         <td className="py-3 px-4 text-center">
                           <div className="inline-flex items-center gap-1.5 font-bold text-[11px]">
@@ -1004,7 +1082,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
 
       {/* 1. Add Student Modal */}
       {isStudentModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
             <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
               <h3 className="font-bold text-sm">Tambah Mahasiswa Baru</h3>
@@ -1113,7 +1191,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
 
       {/* 2. Edit Student Modal */}
       {isEditStudentModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
               <h3 className="font-bold text-sm">Edit Data Mahasiswa</h3>
@@ -1227,7 +1305,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
 
       {/* 3. Add Lecturer Modal */}
       {isLecturerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
             <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
               <h3 className="font-bold text-sm">Tambah Dosen Pengajar</h3>
@@ -1333,7 +1411,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
 
       {/* 4. Edit Lecturer Modal */}
       {isEditLecturerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
               <h3 className="font-bold text-sm">Edit Data Dosen</h3>
@@ -1446,7 +1524,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
 
       {/* 5. Add Class Modal */}
       {isClassModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
             <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
               <h3 className="font-bold text-sm">Tambah Kelas & Jadwal Baru</h3>
@@ -1573,7 +1651,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
 
       {/* 6. Edit Class Modal */}
       {isEditClassModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
               <h3 className="font-bold text-sm">Edit Data Kelas & Jadwal</h3>
@@ -1709,7 +1787,7 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
 
       {/* 8. Student QR Code Card Preview Modal */}
       {selectedStudentForQR && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="relative max-w-md w-full">
             <button
               onClick={() => setSelectedStudentForQR(null)}
@@ -1718,6 +1796,14 @@ export default function AdminDashboard({ user, onSelectSession, onViewClassRepor
               ✕
             </button>
             <StudentCard student={selectedStudentForQR} />
+            <div className="mt-3 flex justify-center">
+              <button
+                onClick={() => handleRegenerateQr(selectedStudentForQR)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-violet-50 text-violet-700 border border-violet-200 rounded-xl text-xs font-bold shadow-md cursor-pointer transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Buat Ulang QR
+              </button>
+            </div>
           </div>
         </div>
       )}

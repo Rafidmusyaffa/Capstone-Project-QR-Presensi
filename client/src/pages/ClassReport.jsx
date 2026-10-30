@@ -1,25 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api';
-import { ArrowLeft, Download, Printer, FileSpreadsheet, Calendar, Users, GraduationCap } from 'lucide-react';
+import { serverNowParts } from '../serverClock';
+import LoadError from '../components/LoadError';
+import { ArrowLeft, Download, Printer, FileSpreadsheet } from 'lucide-react';
+
+// Excel versi Indonesia memakai ';' sebagai pemisah daftar dan ',' sebagai desimal
+const CSV_SEPARATOR = ';';
+const STATUS_LABELS = { PRESENT: 'Hadir', LATE: 'Telat', ABSENT: 'Absen' };
+
+// Kutip setiap sel agar ';', tanda kutip, dan baris baru di dalam data tidak merusak kolom
+function csvCell(value) {
+  if (value === null || value === undefined) return '""';
+  let text = String(value);
+  // Cegah formula injection: sel yang diawali =, +, -, @ dibaca Excel sebagai rumus
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+const csvNumber = (value) => (value === null || value === undefined ? '-' : String(value).replace('.', ','));
+const csvRow = (cells) => cells.map(csvCell).join(CSV_SEPARATOR);
 
 export default function ClassReport({ classId, onBack }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
-  useEffect(() => {
-    fetchReport();
-  }, [classId]);
-
-  const fetchReport = async () => {
+  const fetchReport = useCallback(async () => {
     try {
-      setLoading(true);
       const res = await apiRequest(`/reports/class/${classId}`);
       setData(res);
+      setLoadError(null);
     } catch (e) {
-      console.error(e);
+      setLoadError(e);
     } finally {
       setLoading(false);
     }
+  }, [classId]);
+
+  useEffect(() => {
+    fetchReport();
+  }, [fetchReport]);
+
+  const retryFetch = () => {
+    setLoading(true);
+    fetchReport();
   };
 
   const handlePrint = () => {
@@ -29,51 +53,43 @@ export default function ClassReport({ classId, onBack }) {
   const handleExportCSV = () => {
     if (!data) return;
     const { classInfo, sessions, recap } = data;
+    const { date, time } = serverNowParts();
 
-    let csv = `REKAPITULASI PRESENSI & PENILAIAN MAHASISWA\n`;
-    csv += `Mata Kuliah,${classInfo.name} (${classInfo.code})\n`;
-    csv += `Dosen Pengampu,${classInfo.lecturer_name || '-'}\n`;
-    csv += `Tahun Ajaran / Semester,${classInfo.academic_year} / ${classInfo.semester}\n\n`;
+    const lines = [
+      csvRow(['REKAPITULASI PRESENSI & PENILAIAN MAHASISWA']),
+      csvRow(['Mata Kuliah', `${classInfo.name} (${classInfo.code})`]),
+      csvRow(['Dosen Pengampu', classInfo.lecturer_name || '-']),
+      csvRow(['Tahun Ajaran / Semester', `${classInfo.academic_year} / ${classInfo.semester}`]),
+      csvRow(['Diekspor', `${date} ${time} WIB`]),
+      '',
+    ];
 
-    // Header row
     const headers = ['NIM', 'Nama Mahasiswa', 'Program Studi'];
     sessions.forEach((s) => {
-      headers.push(`P${s.meeting_number} Status`);
-      headers.push(`P${s.meeting_number} Nilai`);
+      headers.push(`P${s.meeting_number} Status`, `P${s.meeting_number} Nilai`);
     });
     headers.push('Total Hadir', 'Total Telat', 'Total Absen', 'Rata-rata Nilai', 'Persentase Kehadiran (%)');
-    csv += headers.join(',') + '\n';
+    lines.push(csvRow(headers));
 
-    // Rows
     recap.forEach((r) => {
-      const row = [
-        `"${r.student.nim}"`,
-        `"${r.student.name}"`,
-        `"${r.student.major}"`,
-      ];
+      const row = [r.student.nim, r.student.name, r.student.major];
       r.sessions.forEach((s) => {
-        let statusIndo = '-';
-        if (s.status === 'PRESENT') statusIndo = 'Hadir';
-        else if (s.status === 'LATE') statusIndo = 'Telat';
-        else if (s.status === 'ABSENT') statusIndo = 'Absen';
-        row.push(statusIndo);
-        row.push(s.score !== null && s.score !== undefined ? s.score : '-');
+        row.push(STATUS_LABELS[s.status] || '-', csvNumber(s.score));
       });
-      row.push(
-        r.presentCount,
-        r.lateCount,
-        r.absentCount,
-        r.averageScore !== null ? r.averageScore : '-',
-        `${r.attendanceRate}%`
-      );
-      csv += row.join(',') + '\n';
+      row.push(r.presentCount, r.lateCount, r.absentCount, csvNumber(r.averageScore), csvNumber(r.attendanceRate));
+      lines.push(csvRow(row));
     });
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    // BOM UTF-8 agar Excel membaca karakter non-ASCII dengan benar; CRLF sesuai standar CSV
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Rekap_Presensi_Nilai_${classInfo.code}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.href = url;
+    link.download = `Rekap_Presensi_Nilai_${classInfo.code}_${date}.csv`;
+    document.body.appendChild(link);
     link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   if (loading && !data) {
@@ -82,6 +98,10 @@ export default function ClassReport({ classId, onBack }) {
         Memuat rekap laporan presensi kelas...
       </div>
     );
+  }
+
+  if (!data) {
+    return <LoadError error={loadError} onRetry={retryFetch} onBack={onBack} />;
   }
 
   const { classInfo, sessions, recap } = data || {};
@@ -114,7 +134,7 @@ export default function ClassReport({ classId, onBack }) {
       </div>
 
       {/* Class Banner */}
-      <div className="modern-card rounded-3xl p-6 sm:p-7 bg-white border border-slate-200/70 shadow-md shadow-slate-200/40 flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="modern-card rounded-3xl p-5 sm:p-7 bg-white border border-slate-200/70 shadow-md shadow-slate-200/40 flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 font-mono font-bold text-xs border border-indigo-100">
@@ -124,7 +144,7 @@ export default function ClassReport({ classId, onBack }) {
               TA {classInfo?.academic_year} • Semester {classInfo?.semester}
             </span>
           </div>
-          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
             Rekapitulasi Presensi: {classInfo?.name}
           </h2>
           <p className="text-xs text-slate-500 mt-1 font-medium">

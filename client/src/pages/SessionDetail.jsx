@@ -1,17 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { apiRequest } from '../api';
 import QRScannerModal from '../components/QRScannerModal';
 import ClassRosterModal from '../components/ClassRosterModal';
+import ManualAttendanceModal from '../components/ManualAttendanceModal';
+import SessionStatusBadge from '../components/SessionStatusBadge';
+import AttendanceStatusBadge from '../components/AttendanceStatusBadge';
+import LoadError, { LoadErrorBanner } from '../components/LoadError';
 import {
   Clock,
   Camera,
-  CheckCircle2,
   AlertTriangle,
-  XCircle,
   Users,
-  Percent,
-  Lock,
-  Unlock,
   CheckCheck,
   ArrowLeft,
   RefreshCw,
@@ -19,15 +18,24 @@ import {
   UserPlus,
   Trash2,
   Award,
+  Lock,
 } from 'lucide-react';
+
+const FINALIZED_LOCK_HINT = 'Sesi sudah difinalisasi: status presensi terkunci (nilai masih bisa diubah).';
 
 export default function SessionDetail({ sessionId, onBack }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const stopPollingRef = useRef(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isRosterOpen, setIsRosterOpen] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
+
+  // Manual attendance state
+  const [manualModalOpen, setManualModalOpen] = useState(false);
+  const [selectedStudentForManual, setSelectedStudentForManual] = useState(null);
 
   // Score / Grading state
   const [scoreModalOpen, setScoreModalOpen] = useState(false);
@@ -114,41 +122,37 @@ export default function SessionDetail({ sessionId, onBack }) {
     }
   };
 
-  useEffect(() => {
-    fetchSession();
-    // Auto-poll every 5 seconds to keep attendee list up to date
-    const interval = setInterval(fetchSession, 5000);
-    return () => clearInterval(interval);
-  }, [sessionId]);
-
-  const fetchSession = async () => {
+  const fetchSession = useCallback(async () => {
     try {
       const res = await apiRequest(`/sessions/${sessionId}`);
       setData(res);
+      setLoadError(null);
     } catch (e) {
-      console.error(e);
+      setLoadError(e);
+      // Akses ditolak / sesi dihapus / login berakhir: tidak perlu polling lagi
+      if ([401, 403, 404].includes(e.status)) stopPollingRef.current = true;
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionId]);
 
-  const handleToggleStatus = async () => {
-    if (!data?.session) return;
-    const newStatus = data.session.status === 'ACTIVE' ? 'CLOSED' : 'ACTIVE';
-    try {
-      await apiRequest(`/sessions/${sessionId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: newStatus }),
-      });
-      setActionMessage(`Status sesi berhasil diubah menjadi ${newStatus}.`);
-      fetchSession();
-    } catch (err) {
-      alert(err.message);
-    }
+  useEffect(() => {
+    fetchSession();
+    // Auto-poll every 5 seconds to keep attendee list up to date (dilewati saat tab tidak terlihat)
+    const interval = setInterval(() => {
+      if (!stopPollingRef.current && !document.hidden) fetchSession();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchSession]);
+
+  const retryFetch = () => {
+    stopPollingRef.current = false;
+    setLoading(true);
+    fetchSession();
   };
 
   const handleFinalize = async () => {
-    if (!confirm('Apakah Anda yakin ingin melakukan finalisasi? Mahasiswa yang belum presensi akan dicatat sebagai Absen dan sesi akan ditutup.')) {
+    if (!confirm('Tutup & finalisasi sesi sekarang?\n\nSesi akan ditutup dan tidak menerima scan lagi. Mahasiswa yang belum presensi akan dicatat sebagai Absen. Tindakan ini tidak dapat dibatalkan.')) {
       return;
     }
     setIsFinalizing(true);
@@ -173,10 +177,24 @@ export default function SessionDetail({ sessionId, onBack }) {
     );
   }
 
+  if (!data) {
+    return <LoadError error={loadError} onRetry={retryFetch} onBack={onBack} />;
+  }
+
   const { session, stats, students } = data || {};
+  const isActive = session?.status === 'ACTIVE';
+  const isFinalized = session?.status === 'FINALIZED';
+  const scannerHint = {
+    SCHEDULED: `Presensi belum dibuka (mulai ${session?.meeting_date} ${session?.start_time}).`,
+    ATTENDANCE_CLOSED: 'Batas waktu presensi sudah lewat.',
+    CLOSED: 'Sesi sudah ditutup.',
+    FINALIZED: 'Sesi sudah difinalisasi.',
+  }[session?.status];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-7">
+      {loadError && <LoadErrorBanner error={loadError} onRetry={retryFetch} />}
+
       {/* Top Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
@@ -198,7 +216,9 @@ export default function SessionDetail({ sessionId, onBack }) {
               setSelectedStudentForManual(null);
               setManualModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-100 transition-all cursor-pointer"
+            disabled={isFinalized}
+            title={isFinalized ? FINALIZED_LOCK_HINT : 'Catat presensi mahasiswa secara manual'}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-100 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <UserPlus className="w-3.5 h-3.5" /> Presensi Manual
           </button>
@@ -228,26 +248,17 @@ export default function SessionDetail({ sessionId, onBack }) {
       )}
 
       {/* Session Header Card */}
-      <div className="modern-card rounded-3xl p-6 sm:p-7 bg-white border border-slate-200/70 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-md shadow-slate-200/40">
-        <div>
-          <div className="flex items-center gap-2.5">
+      <div className="modern-card rounded-3xl p-5 sm:p-7 bg-white border border-slate-200/70 flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6 shadow-md shadow-slate-200/40">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
             <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 font-mono font-bold text-xs border border-indigo-100">
               {session?.class_code}
             </span>
-            <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                session?.status === 'ACTIVE'
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 animate-pulse'
-                  : 'bg-rose-50 text-rose-700 border border-rose-200'
-              }`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${session?.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-              SESSION {session?.status}
-            </span>
+            <SessionStatusBadge status={session?.status} size="lg" />
             <span className="text-xs text-slate-400 font-mono font-medium">{session?.session_code}</span>
           </div>
 
-          <h2 className="text-2xl font-extrabold text-slate-900 mt-2.5 tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2.5 tracking-tight">
             {session?.class_name} • Pertemuan #{session?.meeting_number}
           </h2>
           <p className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-medium">
@@ -268,49 +279,46 @@ export default function SessionDetail({ sessionId, onBack }) {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5">
           <button
             onClick={() => setIsScannerOpen(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/25 transition-all cursor-pointer active:scale-[0.98]"
+            disabled={!isActive}
+            className="col-span-2 justify-center flex items-center gap-2 px-5 py-3 sm:py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/25 transition-all cursor-pointer active:scale-[0.98] disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none disabled:cursor-not-allowed disabled:active:scale-100"
+            title={isActive ? 'Buka kamera untuk scan QR mahasiswa' : scannerHint}
           >
             <Camera className="w-4 h-4" /> Buka Scanner QR
           </button>
 
           <button
-            onClick={handleToggleStatus}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-              session?.status === 'ACTIVE'
-                ? 'bg-rose-50 border-rose-200/80 text-rose-700 hover:bg-rose-100/80'
-                : 'bg-emerald-50 border-emerald-200/80 text-emerald-700 hover:bg-emerald-100/80'
-            }`}
+            disabled={isFinalizing || isFinalized}
+            onClick={handleFinalize}
+            className="justify-center flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Tutup sesi sekarang, catat mahasiswa yang tidak scan sebagai Absen, lalu finalisasi"
           >
-            {session?.status === 'ACTIVE' ? (
+            <CheckCheck className="w-4 h-4" />
+            {isFinalized ? 'Sudah Difinalisasi' : isFinalizing ? 'Memproses...' : (
               <>
-                <Lock className="w-4 h-4" /> Tutup Sesi
-              </>
-            ) : (
-              <>
-                <Unlock className="w-4 h-4" /> Buka Sesi
+                <span className="sm:hidden">Finalisasi</span>
+                <span className="hidden sm:inline">Tutup & Finalisasi Sekarang</span>
               </>
             )}
           </button>
 
           <button
-            disabled={isFinalizing}
-            onClick={handleFinalize}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-[0.98]"
-            title="Ubah mahasiswa yang tidak scan menjadi Absen dan tutup sesi"
-          >
-            <CheckCheck className="w-4 h-4" /> Finalisasi Absen
-          </button>
-
-          <button
             onClick={handleDeleteSession}
-            className="flex items-center gap-1.5 px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-bold transition-all cursor-pointer"
+            className="justify-center flex items-center gap-1.5 px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-bold transition-all cursor-pointer"
             title="Hapus sesi perkuliahan ini beserta seluruh data presensinya"
           >
             <Trash2 className="w-4 h-4" /> Hapus
           </button>
+          {!isActive && scannerHint && (
+            <p className="col-span-2 w-full text-[11px] text-slate-500 font-medium">Scanner nonaktif: {scannerHint}</p>
+          )}
+          {isFinalized && (
+            <p className="col-span-2 w-full text-[11px] text-violet-700 font-medium flex items-center gap-1">
+              <Lock className="w-3 h-3 shrink-0" /> {FINALIZED_LOCK_HINT}
+            </p>
+          )}
         </div>
       </div>
 
@@ -320,7 +328,7 @@ export default function SessionDetail({ sessionId, onBack }) {
           <Clock className="w-3.5 h-3.5 text-indigo-600" /> Aturan Waktu Validasi Presensi (Time-Based Rules)
         </h3>
 
-        <div className="grid grid-cols-4 gap-2.5 sm:gap-4 text-center font-mono">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 text-center font-mono">
           <div className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/60">
             <span className="text-[10px] uppercase font-bold text-slate-400 block font-sans">Waktu Mulai</span>
             <span className="text-base font-bold text-slate-900">{session?.start_time}</span>
@@ -382,7 +390,7 @@ export default function SessionDetail({ sessionId, onBack }) {
 
       {/* Attendee Live Table */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
             <Users className="w-4 h-4 text-indigo-600" /> Daftar Mahasiswa Peserta Pertemuan
           </h3>
@@ -393,7 +401,54 @@ export default function SessionDetail({ sessionId, onBack }) {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Tampilan kartu untuk layar HP */}
+        <ul className="md:hidden divide-y divide-slate-100">
+          {students?.map((s) => (
+            <li key={s.student_id} className="p-4 space-y-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-bold text-sm text-slate-900 truncate">{s.name}</div>
+                  <div className="text-[11px] text-slate-500 font-mono">{s.nim}</div>
+                </div>
+                <AttendanceStatusBadge status={s.attendance_status} />
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                <span>Scan: <strong className="font-mono text-slate-800">{s.scan_time || '—'}</strong></span>
+                <span>
+                  Nilai:{' '}
+                  <strong className="text-slate-800">
+                    {s.score !== null && s.score !== undefined ? `${s.score} / 100` : '—'}
+                  </strong>
+                </span>
+              </div>
+              {s.remarks && <p className="text-[11px] text-slate-400 break-words">{s.remarks}</p>}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setSelectedStudentForManual(s);
+                    setManualModalOpen(true);
+                  }}
+                  disabled={isFinalized}
+                  className="inline-flex items-center justify-center gap-1 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg font-semibold text-xs cursor-pointer border border-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                >
+                  {isFinalized ? <Lock className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />} Presensi
+                </button>
+                <button
+                  onClick={() => handleOpenScoreForStudent(s)}
+                  disabled={!s.attendance_status}
+                  className="inline-flex items-center justify-center gap-1 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-semibold text-xs cursor-pointer border border-indigo-200/70 disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                >
+                  <Award className="w-3.5 h-3.5" /> {s.score !== null && s.score !== undefined ? 'Nilai' : '+ Nilai'}
+                </button>
+              </div>
+            </li>
+          ))}
+          {students?.length === 0 && (
+            <li className="p-6 text-center text-xs text-slate-400">Belum ada mahasiswa terdaftar di kelas ini.</li>
+          )}
+        </ul>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
               <tr>
@@ -417,26 +472,7 @@ export default function SessionDetail({ sessionId, onBack }) {
                     {s.scan_time || '—'}
                   </td>
                   <td className="py-3 px-4">
-                    {s.attendance_status === 'PRESENT' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        <CheckCircle2 className="w-3 h-3" /> Hadir
-                      </span>
-                    )}
-                    {s.attendance_status === 'LATE' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                        <AlertTriangle className="w-3 h-3" /> Telat
-                      </span>
-                    )}
-                    {s.attendance_status === 'ABSENT' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
-                        <XCircle className="w-3 h-3" /> Absen
-                      </span>
-                    )}
-                    {!s.attendance_status && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-500">
-                        Belum Presensi
-                      </span>
-                    )}
+                    <AttendanceStatusBadge status={s.attendance_status} />
                   </td>
                   <td className="py-3 px-4">
                     {s.score !== null && s.score !== undefined ? (
@@ -450,23 +486,39 @@ export default function SessionDetail({ sessionId, onBack }) {
                           </span>
                         )}
                       </div>
-                    ) : (
+                    ) : s.attendance_status ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-50 text-slate-400 border border-slate-200/60">
                         Belum dinilai
                       </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">Presensi belum tercatat</span>
                     )}
                   </td>
                   <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
                     {s.remarks || '—'}
                   </td>
                   <td className="py-3 px-4 text-right">
-                    <button
-                      onClick={() => handleOpenScoreForStudent(s)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-semibold text-[11px] cursor-pointer transition-colors border border-indigo-200/70"
-                      title="Beri atau edit nilai sesi pertemuan ini"
-                    >
-                      <Award className="w-3 h-3" /> {s.score !== null && s.score !== undefined ? 'Nilai' : '+ Nilai'}
-                    </button>
+                    <div className="inline-flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          setSelectedStudentForManual(s);
+                          setManualModalOpen(true);
+                        }}
+                        disabled={isFinalized}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg font-semibold text-[11px] cursor-pointer transition-colors border border-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                        title={isFinalized ? FINALIZED_LOCK_HINT : 'Catat atau ubah status presensi secara manual'}
+                      >
+                        {isFinalized ? <Lock className="w-3 h-3" /> : <UserPlus className="w-3 h-3" />} Presensi
+                      </button>
+                      <button
+                        onClick={() => handleOpenScoreForStudent(s)}
+                        disabled={!s.attendance_status}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-semibold text-[11px] cursor-pointer transition-colors border border-indigo-200/70 disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
+                        title={s.attendance_status ? 'Beri atau edit nilai sesi pertemuan ini' : 'Nilai hanya bisa diberikan setelah presensi tercatat'}
+                      >
+                        <Award className="w-3 h-3" /> {s.score !== null && s.score !== undefined ? 'Nilai' : '+ Nilai'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -474,6 +526,19 @@ export default function SessionDetail({ sessionId, onBack }) {
           </table>
         </div>
       </div>
+
+      {/* Tombol scan mengambang di HP selama sesi aktif */}
+      {isActive && !isScannerOpen && (
+        <>
+          <div className="h-16 md:hidden" aria-hidden="true" />
+          <button
+            onClick={() => setIsScannerOpen(true)}
+            className="md:hidden fixed bottom-4 inset-x-4 z-40 flex items-center justify-center gap-2 py-3.5 bg-indigo-600 active:bg-indigo-700 text-white rounded-2xl font-bold text-sm shadow-xl shadow-indigo-600/30 cursor-pointer"
+          >
+            <Camera className="w-5 h-5" /> Scan QR Mahasiswa
+          </button>
+        </>
+      )}
 
       {/* QR Scanner Modal */}
       <QRScannerModal
@@ -484,6 +549,21 @@ export default function SessionDetail({ sessionId, onBack }) {
           fetchSession();
         }}
       />
+
+      {/* Manual Attendance Modal */}
+      {manualModalOpen && (
+        <ManualAttendanceModal
+          key={selectedStudentForManual?.student_id ?? 'baru'}
+          session={session ? { ...session, students } : null}
+          student={selectedStudentForManual}
+          isOpen={manualModalOpen}
+          onClose={() => setManualModalOpen(false)}
+          onSuccess={() => {
+            setActionMessage('Presensi manual berhasil disimpan.');
+            fetchSession();
+          }}
+        />
+      )}
 
       {/* Class Roster Management Modal (Enroll/Unenroll students) */}
       {isRosterOpen && (
@@ -500,7 +580,7 @@ export default function SessionDetail({ sessionId, onBack }) {
 
       {/* Modal Input/Edit Nilai Sesi */}
       {scoreModalOpen && selectedStudentForScore && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -528,6 +608,13 @@ export default function SessionDetail({ sessionId, onBack }) {
                   <div className="text-xs text-slate-500 font-mono">{selectedStudentForScore.nim} • {selectedStudentForScore.major}</div>
                 </div>
 
+                {!selectedStudentForScore.attendance_status && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>Presensi mahasiswa ini belum tercatat. Catat presensinya terlebih dahulu (scan atau Presensi Manual) sebelum memberi nilai.</span>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     Nilai Sesi (Skala 0 - 100) <span className="text-indigo-600 font-normal">*</span>
@@ -541,7 +628,8 @@ export default function SessionDetail({ sessionId, onBack }) {
                       placeholder="Contoh: 85"
                       value={inputScore}
                       onChange={(e) => setInputScore(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all pr-14"
+                      disabled={!selectedStudentForScore.attendance_status}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all pr-14 disabled:opacity-50 disabled:cursor-not-allowed"
                       autoFocus
                     />
                     <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">/ 100</span>
@@ -557,7 +645,8 @@ export default function SessionDetail({ sessionId, onBack }) {
                     placeholder="Contoh: Aktif bertanya, tugas presentasi sangat baik..."
                     value={inputFeedback}
                     onChange={(e) => setInputFeedback(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                    disabled={!selectedStudentForScore.attendance_status}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -584,8 +673,8 @@ export default function SessionDetail({ sessionId, onBack }) {
                   </button>
                   <button
                     type="submit"
-                    disabled={savingScore}
-                    className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl shadow-md shadow-indigo-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                    disabled={savingScore || !selectedStudentForScore.attendance_status}
+                    className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl shadow-md shadow-indigo-600/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {savingScore ? 'Menyimpan...' : 'Simpan Nilai'}
                   </button>

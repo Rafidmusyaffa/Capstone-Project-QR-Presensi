@@ -3,15 +3,29 @@ const router = express.Router();
 const db = require('../db');
 const { authenticateToken, requireRole } = require('../auth');
 
+const { nowParts, normTime, isValidDate, isValidTime, computePhase } = require('../time');
+const { canManageClass, isEnrolled, forbidden } = require('../access');
+
 /**
- * Helper to get current HH:MM:SS or HH:MM in local time
+ * Tentukan waktu scan. simulated_now ('YYYY-MM-DDTHH:MM[:SS]') atau
+ * simulated_time ('HH:MM[:SS]', tanggal = meeting_date) hanya dipakai jika
+ * ALLOW_SIMULATED_TIME=true; selain itu selalu jam server.
+ * @returns {{date: string, time: string} | null} null jika input simulasi tidak valid
  */
-function getCurrentTimeFormatted() {
-  const now = new Date();
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
+function resolveScanNow(body, session) {
+  if (process.env.ALLOW_SIMULATED_TIME !== 'true') return nowParts();
+
+  const { simulated_now, simulated_time } = body;
+  if (simulated_now) {
+    const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)$/.exec(String(simulated_now).trim());
+    if (!m || !isValidDate(m[1]) || !isValidTime(m[2])) return null;
+    return { date: m[1], time: normTime(m[2]) };
+  }
+  if (simulated_time) {
+    if (!isValidTime(String(simulated_time))) return null;
+    return { date: session.meeting_date, time: normTime(simulated_time) };
+  }
+  return nowParts();
 }
 
 /**
@@ -19,19 +33,15 @@ function getCurrentTimeFormatted() {
  * Pipeline: IDENTIFY -> VALIDATE -> CLASSIFY -> RECORD
  */
 router.post('/scan', authenticateToken, requireRole(['admin', 'dosen']), (req, res) => {
-  const { session_id, qr_data, simulated_time } = req.body;
+  const { session_id, qr_data } = req.body;
 
-  if (!session_id || !qr_data) {
+  if (!session_id || !qr_data || typeof qr_data !== 'string') {
     return res.status(400).json({
       success: false,
       code: 'MISSING_DATA',
       message: 'Session ID dan Data QR Code wajib disertakan.',
     });
   }
-
-  // Determine scan time (allows simulated_time for testing specific Capstone test cases)
-  const fullScanTime = simulated_time ? (simulated_time.length === 5 ? `${simulated_time}:00` : simulated_time) : getCurrentTimeFormatted();
-  const scanTimeShort = fullScanTime.slice(0, 5); // HH:MM
 
   // Fetch Attendance Session
   const session = db.prepare(`
@@ -49,8 +59,22 @@ router.post('/scan', authenticateToken, requireRole(['admin', 'dosen']), (req, r
     });
   }
 
-  // RULE 6: Session CLOSED tidak menerima scan
-  if (session.status === 'CLOSED') {
+  if (!canManageClass(req.user, session.class_id)) {
+    return forbidden(res);
+  }
+
+  const scanNow = resolveScanNow(req.body, session);
+  if (!scanNow) {
+    return res.status(400).json({
+      success: false,
+      code: 'INVALID_SIMULATED_TIME',
+      message: 'Format waktu simulasi tidak valid (gunakan YYYY-MM-DDTHH:MM:SS atau HH:MM:SS).',
+    });
+  }
+  const scanTime = scanNow.time;
+
+  // BR-03/BR-08: Sesi yang sudah ditutup/difinalisasi tidak menerima scan
+  if (session.status === 'CLOSED' || session.status === 'FINALIZED') {
     return res.status(400).json({
       success: false,
       code: 'SESSION_CLOSED',
@@ -58,23 +82,21 @@ router.post('/scan', authenticateToken, requireRole(['admin', 'dosen']), (req, r
     });
   }
 
-  // RULE 1: QR Code Harus Terdaftar (IDENTIFY Mahasiswa)
-  // Accept exact permanent_qr_token or NIM or parsed JSON
+  // BR-01: QR hanya identitas, dicocokkan ke permanent_qr_token
   let searchToken = qr_data.trim();
   try {
     const parsed = JSON.parse(qr_data);
-    if (parsed.permanent_qr_token) searchToken = parsed.permanent_qr_token;
-    else if (parsed.nim) searchToken = parsed.nim;
+    if (parsed && typeof parsed.permanent_qr_token === 'string') searchToken = parsed.permanent_qr_token.trim();
   } catch (e) {
     // Keep raw string token
   }
 
   const student = db.prepare(`
-    SELECT s.*, u.username 
+    SELECT s.*, u.username
     FROM students s
     JOIN users u ON s.user_id = u.id
-    WHERE s.permanent_qr_token = ? OR s.nim = ?
-  `).get(searchToken, searchToken);
+    WHERE s.permanent_qr_token = ?
+  `).get(searchToken);
 
   if (!student) {
     return res.status(400).json({
@@ -84,9 +106,19 @@ router.post('/scan', authenticateToken, requireRole(['admin', 'dosen']), (req, r
     });
   }
 
-  // RULE 2: Mahasiswa Harus Terdaftar di Kelas Ini (CLASS VALIDATION)
+  // BR-01: Mahasiswa harus berstatus aktif
+  if (!student.is_active) {
+    return res.status(400).json({
+      success: false,
+      code: 'STUDENT_INACTIVE',
+      student: { name: student.name, nim: student.nim },
+      message: `STUDENT INACTIVE: ${student.name} (${student.nim}) berstatus nonaktif dan tidak dapat melakukan presensi.`,
+    });
+  }
+
+  // BR-02: Mahasiswa harus terdaftar di kelas sesi ini
   const enrollment = db.prepare(`
-    SELECT id FROM class_students 
+    SELECT id FROM class_students
     WHERE class_id = ? AND student_id = ?
   `).get(session.class_id, student.id);
 
@@ -99,57 +131,72 @@ router.post('/scan', authenticateToken, requireRole(['admin', 'dosen']), (req, r
     });
   }
 
-  // RULE 3: Session Harus Aktif & Waktu Tidak Sebelum Start Time (TIME VALIDATION - BEFORE START)
-  if (scanTimeShort < session.start_time) {
+  // BR-03/BR-06: Validasi tanggal & jam terhadap fase sesi
+  const phase = computePhase(session, scanNow);
+  const scanLabel = `${scanNow.date} ${scanTime}`;
+
+  if (phase === 'SCHEDULED') {
     return res.status(400).json({
       success: false,
-      code: 'ATTENDANCE_SESSION_NOT_STARTED',
+      code: 'SESSION_NOT_STARTED',
       student: { name: student.name, nim: student.nim },
-      scan_time: fullScanTime,
+      scan_time: scanTime,
       start_time: session.start_time,
-      message: `ATTENDANCE SESSION NOT STARTED: Presensi belum dimulai (Mulai: ${session.start_time}, Waktu Scan: ${fullScanTime}).`,
+      message: `SESSION NOT STARTED: Presensi belum dimulai (Mulai: ${session.meeting_date} ${normTime(session.start_time)}, Waktu Scan: ${scanLabel}).`,
     });
   }
 
-  // Check if scan time has exceeded Late Until
-  if (scanTimeShort > session.late_until) {
+  if (phase === 'ATTENDANCE_CLOSED') {
     return res.status(400).json({
       success: false,
       code: 'ATTENDANCE_PERIOD_CLOSED',
       student: { name: student.name, nim: student.nim },
-      scan_time: fullScanTime,
+      scan_time: scanTime,
       late_until: session.late_until,
-      message: `ATTENDANCE PERIOD CLOSED: Batas akhir waktu presensi telah berakhir (${session.late_until}). Waktu scan: ${fullScanTime}.`,
+      message: `ATTENDANCE PERIOD CLOSED: Batas akhir waktu presensi telah berakhir (${normTime(session.late_until)}). Waktu scan: ${scanLabel}.`,
     });
   }
 
-  // RULE 5: Tidak Boleh Presensi Dua Kali (DUPLICATE CHECK)
+  if (phase === 'CLOSED') {
+    return res.status(400).json({
+      success: false,
+      code: 'SESSION_CLOSED',
+      message: `SESSION CLOSED: Sesi presensi ini telah berakhir (Selesai: ${session.meeting_date} ${normTime(session.end_time)}).`,
+    });
+  }
+
+  // BR-07: Tidak boleh presensi dua kali
+  const alreadyAttended = (existing) => res.status(409).json({
+    success: false,
+    code: 'ALREADY_ATTENDED',
+    student: { name: student.name, nim: student.nim },
+    recorded_time: existing?.scan_time,
+    current_status: existing?.status,
+    message: `ALREADY ATTENDED: Mahasiswa ${student.name} (${student.nim}) sudah melakukan presensi sebelumnya` +
+      (existing ? ` dengan status ${existing.status} pada ${existing.scan_time}.` : '.'),
+  });
+
   const existingAttendance = db.prepare(`
-    SELECT * FROM attendances 
+    SELECT * FROM attendances
     WHERE session_id = ? AND student_id = ?
   `).get(session.id, student.id);
 
   if (existingAttendance) {
-    return res.status(400).json({
-      success: false,
-      code: 'ALREADY_ATTENDED',
-      student: { name: student.name, nim: student.nim },
-      recorded_time: existingAttendance.scan_time,
-      current_status: existingAttendance.status,
-      message: `ALREADY ATTENDED: Mahasiswa ${student.name} (${student.nim}) sudah melakukan presensi sebelumnya dengan status ${existingAttendance.status} pada ${existingAttendance.scan_time}.`,
-    });
+    return alreadyAttended(existingAttendance);
   }
 
-  // RULE 4: Waktu Menentukan Status (CLASSIFY: PRESENT vs LATE)
-  let status = 'PRESENT';
-  let remarks = 'Hadir tepat waktu';
+  // BR-04/BR-05: Klasifikasi PRESENT vs LATE dengan presisi detik
+  const presentUntil = normTime(session.present_until);
+  const lateUntil = normTime(session.late_until);
+  let status;
+  let remarks;
 
-  if (scanTimeShort <= session.present_until) {
+  if (scanTime <= presentUntil) {
     status = 'PRESENT';
-    remarks = `Tepat waktu (${fullScanTime} ≤ ${session.present_until})`;
-  } else if (scanTimeShort <= session.late_until) {
+    remarks = `Tepat waktu (${scanTime} ≤ ${presentUntil})`;
+  } else {
     status = 'LATE';
-    remarks = `Terlambat (${session.present_until} < ${fullScanTime} ≤ ${session.late_until})`;
+    remarks = `Terlambat (${presentUntil} < ${scanTime} ≤ ${lateUntil})`;
   }
 
   // RECORD ATTENDANCE
@@ -157,14 +204,14 @@ router.post('/scan', authenticateToken, requireRole(['admin', 'dosen']), (req, r
     const insertRes = db.prepare(`
       INSERT INTO attendances (session_id, student_id, scan_time, status, remarks)
       VALUES (?, ?, ?, ?, ?)
-    `).run(session.id, student.id, fullScanTime, status, remarks);
+    `).run(session.id, student.id, scanTime, status, remarks);
 
     return res.status(200).json({
       success: true,
       code: 'ATTENDANCE_RECORDED',
       attendance_id: insertRes.lastInsertRowid,
       status: status,
-      scan_time: fullScanTime,
+      scan_time: scanTime,
       student: {
         id: student.id,
         name: student.name,
@@ -176,9 +223,14 @@ router.post('/scan', authenticateToken, requireRole(['admin', 'dosen']), (req, r
         meeting_number: session.meeting_number,
         class_name: session.class_name,
       },
-      message: `Presensi Berhasil: ${student.name} tercatat ${status} (${fullScanTime}).`,
+      message: `Presensi Berhasil: ${student.name} tercatat ${status} (${scanTime}).`,
     });
   } catch (err) {
+    // Scan bersamaan: constraint UNIQUE(session_id, student_id) yang menolak
+    if (/UNIQUE constraint failed/i.test(err.message)) {
+      const existing = db.prepare('SELECT * FROM attendances WHERE session_id = ? AND student_id = ?').get(session.id, student.id);
+      return alreadyAttended(existing);
+    }
     return res.status(500).json({
       success: false,
       code: 'DATABASE_ERROR',
@@ -252,6 +304,50 @@ router.get('/my-history', authenticateToken, (req, res) => {
 });
 
 /**
+ * Validasi bersama untuk /score dan /manual: sesi ada, pemanggil mengelola kelasnya,
+ * mahasiswa ada dan terdaftar di kelas (tanpa auto-enroll).
+ * Mengirim respons error dan mengembalikan null jika gagal.
+ */
+function loadSessionAndStudent(req, res, sessionId, studentId) {
+  const session = db.prepare('SELECT * FROM attendance_sessions WHERE id = ?').get(sessionId);
+  if (!session) {
+    res.status(404).json({ error: 'Session tidak ditemukan.' });
+    return null;
+  }
+
+  if (!canManageClass(req.user, session.class_id)) {
+    forbidden(res);
+    return null;
+  }
+
+  const student = db.prepare('SELECT * FROM students WHERE id = ?').get(studentId);
+  if (!student) {
+    res.status(404).json({ error: 'Mahasiswa tidak ditemukan.' });
+    return null;
+  }
+
+  if (!isEnrolled(session.class_id, student.id)) {
+    res.status(400).json({
+      success: false,
+      code: 'STUDENT_NOT_REGISTERED',
+      error: `${student.name} (${student.nim}) tidak terdaftar di kelas sesi ini.`,
+    });
+    return null;
+  }
+
+  return { session, student };
+}
+
+// Rekap sesi FINALIZED bersifat final: status presensi tidak boleh diubah/dihapus lagi
+function sessionFinalized(res) {
+  return res.status(409).json({
+    success: false,
+    code: 'SESSION_FINALIZED',
+    error: 'Sesi sudah difinalisasi. Status presensi tidak dapat diubah lagi.',
+  });
+}
+
+/**
  * Score / Grade Student Attendance Session
  * Allows Lecturer or Admin to grade a student for a specific session
  */
@@ -270,41 +366,26 @@ router.post('/score', authenticateToken, requireRole(['admin', 'dosen']), (req, 
     }
   }
 
-  // Ensure session exists
-  const session = db.prepare('SELECT * FROM attendance_sessions WHERE id = ?').get(session_id);
-  if (!session) {
-    return res.status(404).json({ error: 'Session tidak ditemukan.' });
-  }
+  const check = loadSessionAndStudent(req, res, session_id, student_id);
+  if (!check) return;
+  const { student } = check;
 
-  // Ensure student exists
-  const student = db.prepare('SELECT * FROM students WHERE id = ?').get(student_id);
-  if (!student) {
-    return res.status(404).json({ error: 'Mahasiswa tidak ditemukan.' });
-  }
-
-  // Ensure student is enrolled in class (auto-enroll if not yet enrolled)
-  const enrollment = db.prepare('SELECT id FROM class_students WHERE class_id = ? AND student_id = ?').get(session.class_id, student_id);
-  if (!enrollment) {
-    db.prepare('INSERT INTO class_students (class_id, student_id) VALUES (?, ?)').run(session.class_id, student_id);
-  }
-
+  // Nilai hanya untuk record presensi yang sudah ada; tidak membuat status presensi baru
   const existing = db.prepare('SELECT id, status FROM attendances WHERE session_id = ? AND student_id = ?').get(session_id, student_id);
+  if (!existing) {
+    return res.status(404).json({
+      success: false,
+      code: 'ATTENDANCE_NOT_FOUND',
+      error: `Mahasiswa ${student.name} belum memiliki record presensi pada sesi ini. Catat presensinya terlebih dahulu.`,
+    });
+  }
 
   try {
-    if (existing) {
-      db.prepare(`
-        UPDATE attendances 
-        SET score = ?, score_feedback = ?
-        WHERE id = ?
-      `).run(parsedScore, score_feedback || null, existing.id);
-    } else {
-      // If attendance doesn't exist yet, insert with PRESENT status by default
-      const scanTime = getCurrentTimeFormatted();
-      db.prepare(`
-        INSERT INTO attendances (session_id, student_id, scan_time, status, remarks, score, score_feedback)
-        VALUES (?, ?, ?, 'PRESENT', 'Dinilai langsung oleh Dosen/Admin', ?, ?)
-      `).run(session_id, student_id, scanTime, parsedScore, score_feedback || null);
-    }
+    db.prepare(`
+      UPDATE attendances
+      SET score = ?, score_feedback = ?
+      WHERE id = ?
+    `).run(parsedScore, score_feedback || null, existing.id);
 
     res.json({
       success: true,
@@ -331,26 +412,15 @@ router.post('/manual', authenticateToken, requireRole(['admin', 'dosen']), (req,
     return res.status(400).json({ error: 'Status harus bernilai PRESENT, LATE, atau ABSENT.' });
   }
 
-  // Ensure session exists
-  const session = db.prepare('SELECT * FROM attendance_sessions WHERE id = ?').get(session_id);
-  if (!session) {
-    return res.status(404).json({ error: 'Session tidak ditemukan.' });
-  }
+  const check = loadSessionAndStudent(req, res, session_id, student_id);
+  if (!check) return;
+  const { session, student } = check;
 
-  // Ensure student exists
-  const student = db.prepare('SELECT * FROM students WHERE id = ?').get(student_id);
-  if (!student) {
-    return res.status(404).json({ error: 'Mahasiswa tidak ditemukan.' });
-  }
-
-  // Ensure student is enrolled in class (auto-enroll if not yet enrolled)
-  const enrollment = db.prepare('SELECT id FROM class_students WHERE class_id = ? AND student_id = ?').get(session.class_id, student_id);
-  if (!enrollment) {
-    db.prepare('INSERT INTO class_students (class_id, student_id) VALUES (?, ?)').run(session.class_id, student_id);
-  }
+  if (session.status === 'FINALIZED') return sessionFinalized(res);
 
   const existing = db.prepare('SELECT id FROM attendances WHERE session_id = ? AND student_id = ?').get(session_id, student_id);
-  const scanTime = getCurrentTimeFormatted();
+  // ABSENT tidak punya waktu scan; disamakan dengan pencatatan ABSENT oleh scheduler
+  const scanTime = status === 'ABSENT' ? '-' : nowParts().time;
 
   try {
     if (existing) {
@@ -370,6 +440,13 @@ router.post('/manual', authenticateToken, requireRole(['admin', 'dosen']), (req,
       message: `Presensi mahasiswa ${student.name} berhasil disimpan sebagai ${status}.`,
     });
   } catch (err) {
+    if (/UNIQUE constraint failed/i.test(err.message)) {
+      return res.status(409).json({
+        success: false,
+        code: 'ALREADY_ATTENDED',
+        error: `Presensi ${student.name} baru saja tercatat oleh proses lain. Muat ulang lalu coba lagi.`,
+      });
+    }
     res.status(500).json({ error: 'Gagal menyimpan presensi manual: ' + err.message });
   }
 });
@@ -378,8 +455,24 @@ router.post('/manual', authenticateToken, requireRole(['admin', 'dosen']), (req,
  * Delete / Reset Attendance Record
  */
 router.delete('/:id', authenticateToken, requireRole(['admin', 'dosen']), (req, res) => {
-  const attendanceId = req.params.id;
-  db.prepare('DELETE FROM attendances WHERE id = ?').run(attendanceId);
+  const attendance = db.prepare(`
+    SELECT a.id, s.class_id, s.status as session_status
+    FROM attendances a
+    JOIN attendance_sessions s ON a.session_id = s.id
+    WHERE a.id = ?
+  `).get(req.params.id);
+
+  if (!attendance) {
+    return res.status(404).json({ error: 'Record presensi tidak ditemukan.' });
+  }
+
+  if (!canManageClass(req.user, attendance.class_id)) {
+    return forbidden(res);
+  }
+
+  if (attendance.session_status === 'FINALIZED') return sessionFinalized(res);
+
+  db.prepare('DELETE FROM attendances WHERE id = ?').run(attendance.id);
   res.json({ message: 'Record presensi berhasil direset/dihapus.' });
 });
 

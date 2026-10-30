@@ -1,23 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { QrCode, LogOut, Clock, User, Shield, GraduationCap, School } from 'lucide-react';
+import { QrCode, LogOut, Clock, User } from 'lucide-react';
 import UserProfileModal from './UserProfileModal';
+import { serverNowParts } from '../serverClock';
 
 export default function Navbar({ user, onLogout, onUserUpdated }) {
   const [currentTime, setCurrentTime] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(
-        now.toLocaleTimeString('id-ID', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-        })
-      );
-    };
+    // Jam server WIB (bukan jam perangkat), sama dengan acuan validasi presensi
+    const updateTime = () => setCurrentTime(serverNowParts().time);
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
@@ -63,7 +55,7 @@ export default function Navbar({ user, onLogout, onUserUpdated }) {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-extrabold text-base text-slate-900 tracking-tight">PresensiQR</span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  <span className="hidden sm:inline text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
                     Sistem Kampus
                   </span>
                 </div>
@@ -74,16 +66,16 @@ export default function Navbar({ user, onLogout, onUserUpdated }) {
             </div>
 
             {/* Right Controls */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {/* Live Clock */}
-              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100/70 border border-slate-200/60 text-slate-600 font-mono text-xs font-semibold">
-                <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                <span>{currentTime || '00:00:00'}</span>
+              <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-xl bg-slate-100/70 border border-slate-200/60 text-slate-600 font-mono text-[11px] sm:text-xs font-semibold">
+                <Clock className="hidden sm:block w-3.5 h-3.5 text-indigo-600" />
+                <span title="Jam server (Asia/Jakarta)">{currentTime || '00:00:00'} WIB</span>
               </div>
 
               {/* User Profile Button */}
               {user && (
-                <div className="flex items-center gap-2 pl-3 border-l border-slate-200/80">
+                <div className="flex items-center gap-1 sm:gap-2 pl-2 sm:pl-3 border-l border-slate-200/80">
                   <button
                     onClick={() => setIsProfileOpen(true)}
                     className="flex items-center gap-2.5 p-1 pl-2.5 hover:bg-slate-100/60 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-200/80 text-left group"

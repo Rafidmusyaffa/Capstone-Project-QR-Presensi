@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api';
+import { serverNowParts } from '../serverClock';
+import useAutoRefresh from '../useAutoRefresh';
 import ClassRosterModal from '../components/ClassRosterModal';
+import SessionStatusBadge from '../components/SessionStatusBadge';
+import { LoadErrorBanner } from '../components/LoadError';
+import { SESSION_STATUSES } from '../sessionStatus';
 import {
   Calendar,
   Clock,
   Plus,
-  Play,
   Users,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
   FileText,
   School,
   X,
   ChevronRight,
-  TrendingUp,
   Trash2,
   Search,
   Filter,
@@ -24,7 +24,6 @@ import {
 export default function DosenDashboard({ user, onSelectSession, onViewClassReport }) {
   const [classes, setClasses] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [rosterClass, setRosterClass] = useState(null);
 
@@ -37,35 +36,38 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
   // New Session Form State
   const [selectedClassId, setSelectedClassId] = useState('');
   const [meetingNumber, setMeetingNumber] = useState(1);
-  const [meetingDate, setMeetingDate] = useState(new Date().toISOString().slice(0, 10));
+  const [meetingDate, setMeetingDate] = useState(() => serverNowParts().date);
   const [startTime, setStartTime] = useState('18:00');
   const [presentUntil, setPresentUntil] = useState('18:15');
   const [lateUntil, setLateUntil] = useState('19:00');
   const [endTime, setEndTime] = useState('20:00');
   const [createError, setCreateError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
-  useEffect(() => {
-    fetchData();
-  }, [sessionSortOrder]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
-      setLoading(true);
       const [cls, ses] = await Promise.all([
         apiRequest('/classes'),
         apiRequest(`/sessions?sort=${sessionSortOrder}`),
       ]);
       setClasses(cls);
       setSessions(ses);
-      if (cls.length > 0 && !selectedClassId) {
-        setSelectedClassId(cls[0].id);
+      setLoadError(null);
+      if (cls.length > 0) {
+        setSelectedClassId((prev) => prev || cls[0].id);
       }
     } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+      setLoadError(e);
     }
-  };
+  }, [sessionSortOrder]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Status sesi (Terjadwal -> Aktif -> Ditutup) ikut berubah tanpa refresh manual
+  useAutoRefresh(fetchData);
 
   const handleDeleteSession = async (e, ses) => {
     e.stopPropagation();
@@ -86,7 +88,9 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
 
   const handleCreateSession = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setCreateError(null);
+    setIsSubmitting(true);
 
     try {
       const res = await apiRequest('/sessions', {
@@ -109,20 +113,42 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
       }
     } catch (err) {
       setCreateError(err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleSetQuickTimes = (startH, startM) => {
-    const s = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
-    setStartTime(s);
-    // +15 mins
-    const pM = (startM + 15) % 60;
-    const pH = startH + Math.floor((startM + 15) / 60);
-    setPresentUntil(`${String(pH).padStart(2, '0')}:${String(pM).padStart(2, '0')}`);
-    // +60 mins
-    setLateUntil(`${String(startH + 1).padStart(2, '0')}:${String(startM).padStart(2, '0')}`);
-    // +120 mins
-    setEndTime(`${String(startH + 2).padStart(2, '0')}:${String(startM).padStart(2, '0')}`);
+  // Nomor pertemuan berikutnya = nomor terbesar di kelas tersebut + 1
+  const nextMeetingNumber = (classId) => {
+    const numbers = sessions
+      .filter((s) => String(s.class_id) === String(classId))
+      .map((s) => Number(s.meeting_number) || 0);
+    return numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+  };
+
+  // Isi jam cepat dari jam server WIB: mulai sekarang, hadir +15m, telat +60m, selesai +120m.
+  // Dibatasi 23:59 agar tidak melewati tengah malam (sesi berlaku dalam satu tanggal).
+  const handleSetQuickTimes = () => {
+    const { date, time } = serverNowParts();
+    const [h, m] = time.split(':').map(Number);
+    const start = h * 60 + m;
+    const fmt = (mins) => {
+      const v = Math.min(mins, 23 * 60 + 59);
+      return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
+    };
+    setMeetingDate(date);
+    setStartTime(fmt(start));
+    setPresentUntil(fmt(start + 15));
+    setLateUntil(fmt(start + 60));
+    setEndTime(fmt(start + 120));
+  };
+
+  const openCreateModal = (classId = selectedClassId || classes[0]?.id || '') => {
+    setSelectedClassId(classId);
+    setMeetingNumber(classId ? nextMeetingNumber(classId) : 1);
+    handleSetQuickTimes();
+    setCreateError(null);
+    setIsCreateModalOpen(true);
   };
 
   const filteredSessions = (sessions || []).filter((ses) => {
@@ -148,6 +174,8 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-7">
+      {loadError && <LoadErrorBanner error={loadError} onRetry={fetchData} />}
+
       {/* Top Welcome Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-7 shadow-xl shadow-slate-900/10 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -166,11 +194,7 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
         </div>
 
         <button
-          onClick={() => {
-            const now = new Date();
-            handleSetQuickTimes(now.getHours(), now.getMinutes());
-            setIsCreateModalOpen(true);
-          }}
+          onClick={() => openCreateModal()}
           className="relative z-10 flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-indigo-500/25 transition-all cursor-pointer hover:shadow-indigo-500/40 active:scale-[0.98]"
         >
           <Plus className="w-4 h-4" /> Buka Sesi Pertemuan Baru
@@ -231,12 +255,7 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
                     <FileText className="w-3.5 h-3.5" /> Rekap
                   </button>
                   <button
-                    onClick={() => {
-                      setSelectedClassId(cls.id);
-                      const now = new Date();
-                      handleSetQuickTimes(now.getHours(), now.getMinutes());
-                      setIsCreateModalOpen(true);
-                    }}
+                    onClick={() => openCreateModal(cls.id)}
                     className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors"
                   >
                     + Sesi
@@ -298,8 +317,9 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
                 className="bg-transparent text-xs text-slate-700 font-bold focus:outline-hidden cursor-pointer"
               >
                 <option value="all">Semua Status</option>
-                <option value="ACTIVE">ACTIVE Saja</option>
-                <option value="CLOSED">CLOSED Saja</option>
+                {SESSION_STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label} Saja</option>
+                ))}
               </select>
             </div>
 
@@ -338,16 +358,7 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">{ses.class_code}</span>
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                        ses.status === 'ACTIVE'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 animate-pulse'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {ses.status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
-                      {ses.status}
-                    </span>
+                    <SessionStatusBadge status={ses.status} />
                   </div>
 
                   <h4 className="font-extrabold text-base text-slate-900 group-hover:text-indigo-600 transition-colors">
@@ -422,7 +433,7 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
 
       {/* Create Session Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
               <h3 className="font-bold text-base">Buat Attendance Session Baru</h3>
@@ -443,17 +454,26 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Pilih Kelas</label>
-                <select
-                  value={selectedClassId}
-                  onChange={(e) => setSelectedClassId(e.target.value)}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-indigo-500"
-                >
-                  {classes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} - {c.name}
-                    </option>
-                  ))}
-                </select>
+                {classes.length === 0 ? (
+                  <p className="text-xs p-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl font-medium">
+                    Anda belum mengampu kelas apa pun. Hubungi admin untuk ditetapkan sebagai pengampu kelas.
+                  </p>
+                ) : (
+                  <select
+                    value={selectedClassId}
+                    onChange={(e) => {
+                      setSelectedClassId(e.target.value);
+                      setMeetingNumber(nextMeetingNumber(e.target.value));
+                    }}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {classes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.code} - {c.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -542,9 +562,11 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs cursor-pointer"
+                  disabled={isSubmitting || classes.length === 0}
+                  title="Status sesi (Terjadwal/Aktif) otomatis mengikuti jam server"
+                  className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Simpan & Buka Sesi
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan Sesi'}
                 </button>
               </div>
             </form>

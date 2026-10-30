@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, requireRole } = require('../auth');
+const { canManageClass, canViewClass, hideQrToken, forbidden } = require('../access');
 
-// List classes
+// List classes (admin: semua, dosen: kelas yang diampu, mahasiswa: kelas yang diikuti)
 router.get('/', authenticateToken, (req, res) => {
   let query = `
     SELECT c.*, l.name as lecturer_name, l.nip as lecturer_nip,
@@ -11,22 +12,24 @@ router.get('/', authenticateToken, (req, res) => {
     FROM classes c
     LEFT JOIN lecturers l ON c.lecturer_id = l.id
   `;
+  const params = [];
 
-  // If user is lecturer, optionally filter or show their classes, but let's allow all or tagged
   if (req.user.role === 'dosen') {
-    const lecturer = db.prepare('SELECT id FROM lecturers WHERE user_id = ?').get(req.user.id);
-    if (lecturer) {
-      query += ` WHERE c.lecturer_id = ${lecturer.id}`;
-    }
+    query += ' WHERE l.user_id = ?';
+    params.push(req.user.id);
   } else if (req.user.role === 'mahasiswa') {
-    const student = db.prepare('SELECT id FROM students WHERE user_id = ?').get(req.user.id);
-    if (student) {
-      query += ` WHERE c.id IN (SELECT class_id FROM class_students WHERE student_id = ${student.id})`;
-    }
+    query += ` WHERE c.id IN (
+      SELECT cs.class_id FROM class_students cs
+      JOIN students s ON cs.student_id = s.id
+      WHERE s.user_id = ?
+    )`;
+    params.push(req.user.id);
+  } else if (req.user.role !== 'admin') {
+    return res.json([]);
   }
 
-  query += ` ORDER BY c.code ASC`;
-  const classes = db.prepare(query).all();
+  query += ' ORDER BY c.code ASC';
+  const classes = db.prepare(query).all(...params);
 
   // Attach schedules for each class
   const getSchedules = db.prepare('SELECT * FROM schedules WHERE class_id = ?');
@@ -52,9 +55,13 @@ router.get('/:id', authenticateToken, (req, res) => {
     return res.status(404).json({ error: 'Kelas tidak ditemukan.' });
   }
 
+  if (!canViewClass(req.user, classId)) {
+    return forbidden(res, 'Akses terlarang: Anda tidak terdaftar di kelas ini.');
+  }
+
   const schedules = db.prepare('SELECT * FROM schedules WHERE class_id = ?').all(classId);
   const students = db.prepare(`
-    SELECT s.*, cs.id as enrollment_id
+    SELECT s.id, s.user_id, s.nim, s.name, s.major, s.permanent_qr_token, s.created_at, cs.id as enrollment_id
     FROM students s
     JOIN class_students cs ON s.id = cs.student_id
     WHERE cs.class_id = ?
@@ -70,7 +77,7 @@ router.get('/:id', authenticateToken, (req, res) => {
   res.json({
     ...cls,
     schedules,
-    students,
+    students: hideQrToken(req.user, students),
     sessions,
   });
 });
@@ -119,6 +126,13 @@ router.post('/', authenticateToken, requireRole(['admin']), (req, res) => {
 router.get('/:id/students-roster', authenticateToken, requireRole(['admin', 'dosen']), (req, res) => {
   const classId = req.params.id;
 
+  if (!db.prepare('SELECT id FROM classes WHERE id = ?').get(classId)) {
+    return res.status(404).json({ error: 'Kelas tidak ditemukan.' });
+  }
+  if (!canManageClass(req.user, classId)) {
+    return forbidden(res);
+  }
+
   try {
     const students = db.prepare(`
       SELECT 
@@ -133,7 +147,7 @@ router.get('/:id/students-roster', authenticateToken, requireRole(['admin', 'dos
       ORDER BY is_enrolled DESC, s.name ASC
     `).all(classId);
 
-    res.json(students);
+    res.json(hideQrToken(req.user, students));
   } catch (err) {
     res.status(500).json({ error: 'Gagal memuat daftar mahasiswa: ' + err.message });
   }
@@ -148,6 +162,16 @@ router.post('/:id/students', authenticateToken, requireRole(['admin', 'dosen']),
     return res.status(400).json({ error: 'Student ID wajib ditentukan.' });
   }
 
+  if (!db.prepare('SELECT id FROM classes WHERE id = ?').get(classId)) {
+    return res.status(404).json({ error: 'Kelas tidak ditemukan.' });
+  }
+  if (!canManageClass(req.user, classId)) {
+    return forbidden(res);
+  }
+  if (!db.prepare('SELECT id FROM students WHERE id = ?').get(student_id)) {
+    return res.status(404).json({ error: 'Mahasiswa tidak ditemukan.' });
+  }
+
   try {
     db.prepare(`
       INSERT INTO class_students (class_id, student_id)
@@ -157,7 +181,7 @@ router.post('/:id/students', authenticateToken, requireRole(['admin', 'dosen']),
     res.json({ message: 'Mahasiswa berhasil didaftarkan ke kelas.' });
   } catch (err) {
     if (err.message.includes('UNIQUE constraint failed')) {
-      return res.status(400).json({ error: 'Mahasiswa sudah terdaftar di kelas ini.' });
+      return res.status(409).json({ error: 'Mahasiswa sudah terdaftar di kelas ini.' });
     }
     res.status(500).json({ error: 'Gagal mendaftarkan mahasiswa: ' + err.message });
   }
@@ -166,6 +190,13 @@ router.post('/:id/students', authenticateToken, requireRole(['admin', 'dosen']),
 // Remove student from class
 router.delete('/:id/students/:studentId', authenticateToken, requireRole(['admin', 'dosen']), (req, res) => {
   const { id: classId, studentId } = req.params;
+
+  if (!db.prepare('SELECT id FROM classes WHERE id = ?').get(classId)) {
+    return res.status(404).json({ error: 'Kelas tidak ditemukan.' });
+  }
+  if (!canManageClass(req.user, classId)) {
+    return forbidden(res);
+  }
 
   db.prepare('DELETE FROM class_students WHERE class_id = ? AND student_id = ?').run(classId, studentId);
   res.json({ message: 'Mahasiswa berhasil dihapus dari kelas.' });

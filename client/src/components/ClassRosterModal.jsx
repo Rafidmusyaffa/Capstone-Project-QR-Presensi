@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api';
-import { X, Search, UserCheck, UserPlus, UserMinus, Users, Check, AlertCircle } from 'lucide-react';
+import { X, Search, UserCheck, UserPlus, UserMinus, Users, Check } from 'lucide-react';
 
 export default function ClassRosterModal({ classId, className, isOpen, onClose, onRosterChanged }) {
   const [students, setStudents] = useState([]);
@@ -9,13 +9,7 @@ export default function ClassRosterModal({ classId, className, isOpen, onClose, 
   const [actionMessage, setActionMessage] = useState(null);
   const [activeFilterTab, setActiveFilterTab] = useState('all'); // 'all', 'enrolled', 'not_enrolled'
 
-  useEffect(() => {
-    if (isOpen && classId) {
-      fetchRoster();
-    }
-  }, [isOpen, classId]);
-
-  const fetchRoster = async () => {
+  const fetchRoster = useCallback(async () => {
     try {
       setLoading(true);
       const data = await apiRequest(`/classes/${classId}/students-roster`);
@@ -25,7 +19,13 @@ export default function ClassRosterModal({ classId, className, isOpen, onClose, 
     } finally {
       setLoading(false);
     }
-  };
+  }, [classId]);
+
+  useEffect(() => {
+    if (isOpen && classId) {
+      fetchRoster();
+    }
+  }, [isOpen, classId, fetchRoster]);
 
   const handleToggleEnrollment = async (student) => {
     setActionMessage(null);
@@ -93,7 +93,7 @@ export default function ClassRosterModal({ classId, className, isOpen, onClose, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
@@ -195,8 +195,12 @@ export default function ClassRosterModal({ classId, className, isOpen, onClose, 
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    {s.major || 'Program Studi -'} • QR Token:{' '}
-                    <span className="font-mono text-slate-400">{s.permanent_qr_token}</span>
+                    {s.major || 'Program Studi -'}
+                    {s.permanent_qr_token && (
+                      <>
+                        {' '}• QR Token: <span className="font-mono text-slate-400">{s.permanent_qr_token}</span>
+                      </>
+                    )}
                   </p>
                 </div>
 

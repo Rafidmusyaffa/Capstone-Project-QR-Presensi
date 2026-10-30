@@ -1,11 +1,12 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Download, Printer, ShieldCheck, AlertCircle, QrCode } from 'lucide-react';
 
 export default function StudentCard({ student }) {
-  const cardRef = useRef(null);
-
   if (!student) return null;
+
+  // Token QR hanya dikirim backend ke admin dan ke mahasiswa pemiliknya
+  const hasToken = Boolean(student.permanent_qr_token);
 
   const handleDownloadQR = () => {
     const svg = document.getElementById('student-qr-code');
@@ -52,13 +53,20 @@ export default function StudentCard({ student }) {
       <div className="p-6 text-center">
         {/* QR Code Container */}
         <div className="inline-block p-4 bg-white rounded-3xl border-2 border-dashed border-indigo-200/80 shadow-xs mb-4.5 hover:border-indigo-400 transition-colors">
-          <QRCodeSVG
-            id="student-qr-code"
-            value={student.permanent_qr_token || student.nim}
-            size={180}
-            level="H"
-            includeMargin={true}
-          />
+          {hasToken ? (
+            <QRCodeSVG
+              id="student-qr-code"
+              value={student.permanent_qr_token}
+              size={180}
+              level="H"
+              includeMargin={true}
+            />
+          ) : (
+            <div className="w-[180px] h-[180px] flex flex-col items-center justify-center gap-2 text-slate-400">
+              <QrCode className="w-12 h-12" />
+              <span className="text-[11px] font-semibold px-4">QR Code tidak tersedia untuk akun ini.</span>
+            </div>
+          )}
         </div>
 
         {/* Student Details */}
@@ -77,7 +85,7 @@ export default function StudentCard({ student }) {
           <div>
             <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">QR Token Tetap</span>
             <span className="font-mono text-slate-700 font-bold truncate block max-w-[210px] text-xs">
-              {student.permanent_qr_token}
+              {student.permanent_qr_token || '—'}
             </span>
           </div>
           <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-bold rounded-lg text-[10px]">
@@ -97,7 +105,8 @@ export default function StudentCard({ student }) {
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button
             onClick={handleDownloadQR}
-            className="flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer active:scale-[0.98]"
+            disabled={!hasToken}
+            className="flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" /> Download QR
           </button>

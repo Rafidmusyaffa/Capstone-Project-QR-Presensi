@@ -13,6 +13,20 @@
       radial-gradient(at 0% 100%, rgba(59, 130, 246, 0.04) 0px, transparent 50%);
   }
 
+  /* Sentuhan di HP: tanpa kilatan biru saat tap */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* iOS Safari otomatis zoom saat fokus ke input < 16px; cegah di layar kecil */
+  @media (max-width: 639px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
   /* Custom Smooth Scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
