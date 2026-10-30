@@ -36,3 +36,7 @@ Thumbs.db
 .idea/
 *.sublime-project
 *.sublime-workspace
+
+# Catatan lokal (tidak ikut ke GitHub)
+CLAUDE.md
+notes/
