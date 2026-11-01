@@ -52,7 +52,7 @@ Buka **http://localhost:3000**.
 - `npm install` menjalankan skrip `postinstall` yang menginstall dependensi `client/` dan mem-build frontend ke `client/dist`. Tidak perlu menjalankan build terpisah.
 - Setelah mengubah kode frontend, jalankan `npm run build` untuk mem-build ulang (server tidak perlu di-restart).
 - Di Windows bisa juga klik dua kali `install.bat`, lalu `start.bat`.
-- Database `server/presensi.db` dibuat dan diisi data demo otomatis saat server pertama kali berjalan. Hapus file itu untuk kembali ke data demo awal.
+- Database `server/presensi.db` dibuat dan diisi data demo otomatis saat server pertama kali berjalan. Hapus file itu untuk kembali ke isi `server/seed-data.json`.
 
 ### Mode pengembangan (hot reload frontend)
 
@@ -69,19 +69,25 @@ Buka `http://<IP-laptop>:3000` dari HP yang terhubung ke Wi-Fi yang sama. Browse
 
 ## Akun demo
 
-Semua akun berikut dibuat oleh seed di `server/db.js`.
+Data demo berasal dari [`server/seed-data.json`](server/seed-data.json), yaitu hasil ekspor database lokal. Versi online menampilkan data yang sama: mahasiswa, kelas, jadwal, sesi, dan seluruh presensinya. Sesi yang sudah `FINALIZED` tetap terkunci, dan token QR tetap sama sehingga kartu QR yang sudah dicetak bisa dipindai di versi online.
 
-| Role | Username | Password | Nama | Keterangan |
-| :--- | :--- | :--- | :--- | :--- |
-| Admin | `admin` | `admin123` | – | Akses penuh: mahasiswa, dosen, kelas, sesi, rekap |
-| Dosen | `dosen1` | `dosen123` | Dr. Budi Santoso, M.Kom | Pengampu **SI-05 Database Systems** (Rabu 18:00–20:00, Lab Komputer 3) |
-| Dosen | `dosen2` | `dosen123` | Siti Aminah, S.Kom., M.T | Pengampu **SI-07 Pemrograman Web Lanjut** (Kamis 13:00–15:30, Ruang Teori 204) |
-| Mahasiswa | `mahasiswa1` | `mhs123` | Rafid Musyaffa (220101001) | Peserta SI-05 |
-| Mahasiswa | `mahasiswa2` | `mhs123` | Muhammad Syahrul (220101002) | Peserta SI-05 dan SI-07 |
-| Mahasiswa | `mahasiswa3` | `mhs123` | Lina Dewi Pakpahan (220101003) | Peserta SI-05 |
-| Mahasiswa | `mahasiswa4` | `mhs123` | Fajar Nugraha (220101004) | Peserta SI-07 saja. Cocok untuk menguji penolakan "tidak terdaftar di kelas" pada sesi SI-05 |
+| Role | Username | Password |
+| :--- | :--- | :--- |
+| Admin | `admin` | `admin123` |
+| Dosen | `dosen1`, `dosen2` | `dosen123` |
+| Mahasiswa | `mahasiswa1` s/d `mahasiswa5` | `mhs123` |
 
-Seed juga membuat satu sesi demo **SI-05 Pertemuan #5** pada tanggal server dijalankan (mulai 00:00, hadir s/d 23:45, telat s/d 23:55, selesai 23:59). Sesi ini langsung bisa dipakai untuk mencoba scan. Token QR demo dibuat acak setiap kali seed berjalan. Lihat tokennya di kartu QR mahasiswa atau di menu admin.
+Password asli tidak ikut diekspor. Saat seed berjalan, semua akun memakai password demo di atas sesuai role-nya. Empat digit terakhir NIM juga disamarkan saat ekspor, jadi NIM di data demo bukan NIM asli.
+
+Seed juga menambahkan satu sesi demo **Capstone Project** pada tanggal server dijalankan, dengan nomor pertemuan berikutnya (mulai 00:00, hadir s/d 23:45, telat s/d 23:55, selesai 23:59). Sesi ini langsung bisa dipakai untuk mencoba scan.
+
+### Memperbarui data demo
+
+```bash
+npm run seed:export   # tulis ulang server/seed-data.json dari server/presensi.db
+```
+
+Setelah itu commit `server/seed-data.json` dan deploy ulang. Jika file ini tidak ada, atau `SEED_SOURCE=builtin`, server memakai seed bawaan di `server/db.js`.
 
 ---
 
@@ -92,7 +98,7 @@ npm test
 ```
 
 `test-capstone.js` berjalan mandiri:
-- Menyalakan server sendiri di port 3999 dengan database sementara.
+- Menyalakan server sendiri di port 3999 dengan database sementara dan seed bawaan (`SEED_SOURCE=builtin`).
 - Membuat sesi uji untuk besok (mulai 18:00, hadir s/d 18:15, telat s/d 19:00, selesai 20:00).
 - Menjalankan kasus uji black-box (Equivalence Partitioning & Boundary Value Analysis) TC-01 s/d TC-19.
 
@@ -114,6 +120,7 @@ Salin [`.env.example`](.env.example) menjadi `.env` lalu sesuaikan. Semua variab
 | `DB_PATH` | `server/presensi.db` | Lokasi file database SQLite |
 | `APP_TIMEZONE` | `Asia/Jakarta` | Zona waktu acuan semua aturan presensi |
 | `SEED_DEMO` | `true` | `false` = database baru tidak diisi data demo |
+| `SEED_SOURCE` | kosong | `builtin` = pakai seed bawaan di `server/db.js`, bukan `server/seed-data.json` |
 | `CORS_ORIGIN` | kosong (CORS mati) | Daftar origin yang diizinkan, dipisah koma. Tidak perlu jika frontend & API satu domain |
 | `ALLOW_SIMULATED_TIME` | `false` | **Khusus pengujian.** Mengizinkan waktu simulasi pada request scan. Jangan aktifkan di produksi |
 
@@ -135,11 +142,13 @@ presensi-qr/
 │       └── App.jsx                 # Root aplikasi & pemilihan halaman
 ├── server/                         # Backend API (Express + SQLite)
 │   ├── routes/                     # auth, users, classes, sessions, attendance, reports
+│   ├── scripts/export-seed.js      # Ekspor database lokal ke seed-data.json
 │   ├── access.js                   # Otorisasi per kelas & penyembunyian token QR
 │   ├── auth.js                     # JWT & middleware peran
 │   ├── db.js                       # Skema, migrasi, dan seed data demo
 │   ├── qrToken.js                  # Pembuat token QR acak (PQR-…)
 │   ├── scheduler.js                # Pembaruan status sesi & finalisasi otomatis
+│   ├── seed-data.json              # Data demo (hasil npm run seed:export)
 │   ├── time.js                     # Jam server Asia/Jakarta & fase sesi
 │   └── index.js                    # Entry point, security header, file statis client/dist
 ├── docs/
@@ -173,7 +182,7 @@ presensi-qr/
 
 5. Klik **Create Web Service**. Versi Node mengikuti `engines` di `package.json` (≥ 22.5). Jika Render memakai versi lama, tambahkan env `NODE_VERSION` = `22.12.0` atau lebih baru.
 
-> **Catatan Render free:** filesystem bersifat sementara. Setiap kali server restart atau "tidur" lalu bangun kembali, database kosong lagi dan **diisi ulang dengan data demo**. Semua data yang dibuat sebelumnya (sesi, presensi, akun baru) hilang dan token QR demo berubah. Untuk pemakaian nyata dibutuhkan penyimpanan permanen (persistent disk atau database terkelola).
+> **Catatan Render free:** filesystem bersifat sementara. Setiap kali server restart atau "tidur" lalu bangun kembali, database kosong lagi dan **diisi ulang dari `server/seed-data.json`**. Perubahan yang dibuat di versi online (sesi, presensi, akun baru) hilang, tetapi token QR tetap sama. Untuk pemakaian nyata dibutuhkan penyimpanan permanen (persistent disk atau database terkelola).
 
 ---
 

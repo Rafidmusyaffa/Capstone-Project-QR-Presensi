@@ -11,7 +11,8 @@
     "build": "npm --prefix client run build",
     "install:all": "npm install",
     "postinstall": "npm --prefix client install --include=dev && npm --prefix client run build",
-    "test": "node test-capstone.js"
+    "test": "node test-capstone.js",
+    "seed:export": "node server/scripts/export-seed.js"
   },
   "keywords": [
     "attendance",

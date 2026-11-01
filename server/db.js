@@ -1,10 +1,12 @@
 const { DatabaseSync } = require('node:sqlite');
+const fs = require('node:fs');
 const path = require('node:path');
 const bcrypt = require('bcryptjs');
 const { nowParts, computePhase } = require('./time');
 const { generateQrToken } = require('./qrToken');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, 'presensi.db');
+const SEED_FILE = path.join(__dirname, 'seed-data.json');
 const db = new DatabaseSync(dbPath);
 
 // Enable foreign keys and WAL mode for reliability
@@ -157,11 +159,91 @@ function initDatabase() {
   seedData();
 }
 
+/** Insert baris apa adanya (termasuk id) berdasarkan nama kolom di JSON. */
+function insertRows(table, rows) {
+  for (const row of rows) {
+    const columns = Object.keys(row);
+    const names = columns.map((column) => `"${column}"`).join(', ');
+    const placeholders = columns.map(() => '?').join(', ');
+    db.prepare(`INSERT INTO ${table} (${names}) VALUES (${placeholders})`).run(...columns.map((column) => row[column]));
+  }
+}
+
+/** Satu sesi sepanjang hari ini untuk Capstone Project, supaya scan bisa langsung dicoba saat demo. */
+function insertTodayDemoSession(seed) {
+  const demoClass = seed.classes.find((c) => c.name === 'Capstone Project');
+  const admin = seed.users.find((u) => u.role === 'admin');
+  if (!demoClass || !admin) {
+    console.warn('Sesi demo hari ini dilewati: kelas Capstone Project atau akun admin tidak ada di seed-data.json.');
+    return;
+  }
+
+  const meetingNumbers = seed.attendance_sessions.filter((s) => s.class_id === demoClass.id).map((s) => s.meeting_number);
+  const meetingNumber = Math.max(0, ...meetingNumbers) + 1;
+  const now = nowParts();
+  const demoSession = {
+    meeting_date: now.date,
+    start_time: '00:00',
+    present_until: '23:45',
+    late_until: '23:55',
+    end_time: '23:59',
+  };
+  const classCode = demoClass.code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+  insertRows('attendance_sessions', [{
+    session_code: `SES-${classCode}-M${String(meetingNumber).padStart(2, '0')}-DEMO`,
+    class_id: demoClass.id,
+    meeting_number: meetingNumber,
+    ...demoSession,
+    status: computePhase(demoSession, now),
+    created_by: admin.id,
+  }]);
+}
+
+/** Isi DB dari seed-data.json (hasil `npm run seed:export`) dalam satu transaksi. */
+function seedFromFile() {
+  const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
+
+  const passwords = {
+    admin: bcrypt.hashSync('admin123', 10),
+    dosen: bcrypt.hashSync('dosen123', 10),
+    mahasiswa: bcrypt.hashSync('mhs123', 10),
+  };
+
+  db.exec('BEGIN');
+  try {
+    // Data asli bisa berisi nomor pertemuan ganda dari sebelum index ini ada, jadi
+    // index dilepas selama impor. API tetap menolak duplikat lewat pengecekannya sendiri.
+    db.exec('DROP INDEX IF EXISTS idx_sessions_class_meeting;');
+
+    insertRows('users', seed.users.map((user) => ({ ...user, password_hash: passwords[user.role] })));
+    for (const table of ['lecturers', 'students', 'classes', 'class_students', 'schedules', 'attendance_sessions', 'attendances']) {
+      insertRows(table, seed[table]);
+    }
+    insertTodayDemoSession(seed);
+
+    try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_class_meeting ON attendance_sessions(class_id, meeting_number);'); } catch (e) {}
+
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  console.log(`Data demo dimuat dari seed-data.json (${seed.students.length} mahasiswa, ${seed.attendance_sessions.length} sesi + 1 sesi demo hari ini, ${seed.attendances.length} presensi).`);
+}
+
 function seedData() {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   if (userCount > 0) return;
   // Data demo aktif secara default (Render free: DB di-seed ulang tiap start); SEED_DEMO=false mematikannya
   if (process.env.SEED_DEMO === 'false') return;
+
+  // SEED_SOURCE=builtin memaksa seed bawaan di bawah (dipakai npm test)
+  if (process.env.SEED_SOURCE !== 'builtin' && fs.existsSync(SEED_FILE)) {
+    seedFromFile();
+    return;
+  }
 
   console.log('Seeding initial data for Presensi QR System...');
 

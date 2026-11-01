@@ -1,0 +1,535 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "password_hash": "__DEMO__",
+      "role": "admin",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 2,
+      "username": "dosen1",
+      "password_hash": "__DEMO__",
+      "role": "dosen",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 3,
+      "username": "dosen2",
+      "password_hash": "__DEMO__",
+      "role": "dosen",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 4,
+      "username": "mahasiswa1",
+      "password_hash": "__DEMO__",
+      "role": "mahasiswa",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 5,
+      "username": "mahasiswa2",
+      "password_hash": "__DEMO__",
+      "role": "mahasiswa",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 6,
+      "username": "mahasiswa3",
+      "password_hash": "__DEMO__",
+      "role": "mahasiswa",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 7,
+      "username": "mahasiswa4",
+      "password_hash": "__DEMO__",
+      "role": "mahasiswa",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 8,
+      "username": "mahasiswa5",
+      "password_hash": "__DEMO__",
+      "role": "mahasiswa",
+      "created_at": "2026-10-07 08:10:24"
+    }
+  ],
+  "lecturers": [
+    {
+      "id": 1,
+      "user_id": 2,
+      "nip": "198001012005011001",
+      "name": "Dr. Budi Santoso, M.Kom",
+      "email": "budi.santoso@univ.ac.id",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 2,
+      "user_id": 3,
+      "nip": "198505122008012002",
+      "name": "Siti Aminah, S.Kom., M.T",
+      "email": "siti.aminah@univ.ac.id",
+      "created_at": "2026-09-25 07:39:55"
+    }
+  ],
+  "students": [
+    {
+      "id": 1,
+      "user_id": 4,
+      "nim": "051071443",
+      "name": "Rafid Musyaffa",
+      "major": "Sistem Informasi",
+      "permanent_qr_token": "PQR-rPW41DGpQ6PztwnAkI-e2w",
+      "created_at": "2026-09-25 07:39:55",
+      "is_active": 1
+    },
+    {
+      "id": 2,
+      "user_id": 5,
+      "nim": "052195713",
+      "name": "Muhammad Syahrul",
+      "major": "Sistem Informasi",
+      "permanent_qr_token": "PQR-3GOCOPSniyXCniNfP9_veQ",
+      "created_at": "2026-09-25 07:39:55",
+      "is_active": 1
+    },
+    {
+      "id": 3,
+      "user_id": 6,
+      "nim": "052206047",
+      "name": "Lina Dewi Pakpahan",
+      "major": "Sistem Informasi",
+      "permanent_qr_token": "PQR-AfSzXRzR6JcjLpst0Q2Htg",
+      "created_at": "2026-09-25 07:39:55",
+      "is_active": 1
+    },
+    {
+      "id": 4,
+      "user_id": 7,
+      "nim": "044708512",
+      "name": "FIDHIA IQBALIA GUSNO",
+      "major": "Sistem Informasi",
+      "permanent_qr_token": "PQR-vFYlNn0-6DBZD9EOih2Elw",
+      "created_at": "2026-09-25 07:39:55",
+      "is_active": 1
+    },
+    {
+      "id": 5,
+      "user_id": 8,
+      "nim": "048490684",
+      "name": "RARADEFRI ALFARADISTI",
+      "major": "Sistem Informasi",
+      "permanent_qr_token": "PQR-l6PDKqTy-a2qgwnLq3USSQ",
+      "created_at": "2026-10-07 08:10:24",
+      "is_active": 1
+    }
+  ],
+  "classes": [
+    {
+      "id": 1,
+      "code": "SI-05",
+      "name": "Database Systems",
+      "lecturer_id": 1,
+      "academic_year": "2026/2027",
+      "semester": "Ganjil",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 2,
+      "code": "SI-07",
+      "name": "Pemrograman Web Lanjut",
+      "lecturer_id": 2,
+      "academic_year": "2026/2027",
+      "semester": "Ganjil",
+      "created_at": "2026-09-25 07:39:55"
+    },
+    {
+      "id": 3,
+      "code": "S1-08",
+      "name": "Capstone Project",
+      "lecturer_id": 1,
+      "academic_year": "2026/2027",
+      "semester": "Ganjil",
+      "created_at": "2026-09-25 08:12:37"
+    },
+    {
+      "id": 4,
+      "code": "S1 - 08",
+      "name": "Pemograman AS 400",
+      "lecturer_id": 1,
+      "academic_year": "2026/2027",
+      "semester": "Ganjil",
+      "created_at": "2026-10-09 06:58:37"
+    }
+  ],
+  "class_students": [
+    {
+      "id": 1,
+      "class_id": 1,
+      "student_id": 1
+    },
+    {
+      "id": 2,
+      "class_id": 1,
+      "student_id": 2
+    },
+    {
+      "id": 3,
+      "class_id": 1,
+      "student_id": 3
+    },
+    {
+      "id": 4,
+      "class_id": 2,
+      "student_id": 2
+    },
+    {
+      "id": 5,
+      "class_id": 2,
+      "student_id": 4
+    },
+    {
+      "id": 6,
+      "class_id": 3,
+      "student_id": 1
+    },
+    {
+      "id": 7,
+      "class_id": 3,
+      "student_id": 3
+    },
+    {
+      "id": 9,
+      "class_id": 3,
+      "student_id": 4
+    },
+    {
+      "id": 10,
+      "class_id": 3,
+      "student_id": 2
+    },
+    {
+      "id": 11,
+      "class_id": 3,
+      "student_id": 5
+    }
+  ],
+  "schedules": [
+    {
+      "id": 1,
+      "class_id": 1,
+      "day_of_week": "Rabu",
+      "start_time": "18:00",
+      "end_time": "20:00",
+      "room": "Lab Komputer 3"
+    },
+    {
+      "id": 2,
+      "class_id": 2,
+      "day_of_week": "Kamis",
+      "start_time": "13:00",
+      "end_time": "15:30",
+      "room": "Ruang Teori 204"
+    },
+    {
+      "id": 3,
+      "class_id": 3,
+      "day_of_week": "Selasa",
+      "start_time": "08:00",
+      "end_time": "10:00",
+      "room": "Lab Komputer 1"
+    },
+    {
+      "id": 4,
+      "class_id": 4,
+      "day_of_week": "Senin",
+      "start_time": "08:00",
+      "end_time": "10:00",
+      "room": "Lab Komputer 1"
+    }
+  ],
+  "attendance_sessions": [
+    {
+      "id": 1,
+      "session_code": "SES-SI05-M05",
+      "class_id": 1,
+      "meeting_number": 5,
+      "meeting_date": "2026-09-25",
+      "start_time": "00:00",
+      "present_until": "23:45",
+      "late_until": "23:55",
+      "end_time": "23:59",
+      "status": "FINALIZED",
+      "created_by": 1,
+      "created_at": "2026-09-25 07:39:55",
+      "finalized_at": "2026-10-29 18:31:56"
+    },
+    {
+      "id": 4,
+      "session_code": "SES-s109-M01-1489",
+      "class_id": 3,
+      "meeting_number": 1,
+      "meeting_date": "2026-09-25",
+      "start_time": "15:13",
+      "present_until": "15:28",
+      "late_until": "16:13",
+      "end_time": "17:13",
+      "status": "FINALIZED",
+      "created_by": 2,
+      "created_at": "2026-09-25 08:13:41",
+      "finalized_at": "2026-10-29 18:31:56"
+    },
+    {
+      "id": 5,
+      "session_code": "SES-s109-M01-9087",
+      "class_id": 3,
+      "meeting_number": 1,
+      "meeting_date": "2026-09-25",
+      "start_time": "15:20",
+      "present_until": "15:35",
+      "late_until": "16:20",
+      "end_time": "17:20",
+      "status": "FINALIZED",
+      "created_by": 2,
+      "created_at": "2026-09-25 08:20:39",
+      "finalized_at": "2026-10-29 18:31:56"
+    },
+    {
+      "id": 7,
+      "session_code": "SES-s109-M02-1628",
+      "class_id": 3,
+      "meeting_number": 2,
+      "meeting_date": "2026-09-29",
+      "start_time": "14:14",
+      "present_until": "14:29",
+      "late_until": "15:14",
+      "end_time": "16:14",
+      "status": "FINALIZED",
+      "created_by": 2,
+      "created_at": "2026-09-29 07:15:01",
+      "finalized_at": "2026-10-29 18:31:56"
+    },
+    {
+      "id": 8,
+      "session_code": "SES-SI05-M02-9379",
+      "class_id": 1,
+      "meeting_number": 2,
+      "meeting_date": "2026-10-09",
+      "start_time": "13:54",
+      "present_until": "14:09",
+      "late_until": "14:54",
+      "end_time": "15:54",
+      "status": "FINALIZED",
+      "created_by": 2,
+      "created_at": "2026-10-09 06:54:29",
+      "finalized_at": "2026-10-29 18:31:56"
+    },
+    {
+      "id": 10,
+      "session_code": "SES-S108-M04-5573",
+      "class_id": 3,
+      "meeting_number": 4,
+      "meeting_date": "2026-10-31",
+      "start_time": "22:09",
+      "present_until": "22:24",
+      "late_until": "23:09",
+      "end_time": "23:59",
+      "status": "FINALIZED",
+      "created_by": 2,
+      "created_at": "2026-10-31 15:09:55",
+      "finalized_at": "2026-10-31 22:28:09"
+    }
+  ],
+  "attendances": [
+    {
+      "id": 7,
+      "session_id": 1,
+      "student_id": 1,
+      "scan_time": "15:16:00",
+      "status": "PRESENT",
+      "remarks": "Tepat waktu (15:16:00 ≤ 23:45)",
+      "recorded_at": "2026-09-25 08:16:49",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 11,
+      "session_id": 1,
+      "student_id": 2,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "Automatic Closing: Difinalisasi sebagai ABSENT karena tidak melakukan scan.",
+      "recorded_at": "2026-09-29 07:08:48",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 12,
+      "session_id": 1,
+      "student_id": 3,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "Automatic Closing: Difinalisasi sebagai ABSENT karena tidak melakukan scan.",
+      "recorded_at": "2026-09-29 07:08:48",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 13,
+      "session_id": 4,
+      "student_id": 1,
+      "scan_time": "15:34:18",
+      "status": "PRESENT",
+      "remarks": "good",
+      "recorded_at": "2026-09-29 07:10:03",
+      "score": 86,
+      "score_feedback": null
+    },
+    {
+      "id": 14,
+      "session_id": 4,
+      "student_id": 3,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "Automatic Closing: Difinalisasi sebagai ABSENT karena tidak melakukan scan.",
+      "recorded_at": "2026-09-29 07:11:18",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 15,
+      "session_id": 7,
+      "student_id": 1,
+      "scan_time": "14:15:00",
+      "status": "PRESENT",
+      "remarks": "Tepat waktu (14:15:00 ≤ 14:29)",
+      "recorded_at": "2026-09-29 07:15:22",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 16,
+      "session_id": 7,
+      "student_id": 3,
+      "scan_time": "14:15:49",
+      "status": "PRESENT",
+      "remarks": "Dicatat manual oleh Dosen",
+      "recorded_at": "2026-09-29 07:15:49",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 17,
+      "session_id": 8,
+      "student_id": 1,
+      "scan_time": "13:54:00",
+      "status": "PRESENT",
+      "remarks": "Tepat waktu (13:54:00 ≤ 14:09)",
+      "recorded_at": "2026-10-09 06:55:05",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 18,
+      "session_id": 8,
+      "student_id": 2,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "Automatic Closing: Difinalisasi sebagai ABSENT karena tidak melakukan scan.",
+      "recorded_at": "2026-10-09 08:54:00",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 19,
+      "session_id": 8,
+      "student_id": 3,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "Automatic Closing: Difinalisasi sebagai ABSENT karena tidak melakukan scan.",
+      "recorded_at": "2026-10-09 08:54:00",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 20,
+      "session_id": 5,
+      "student_id": 1,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "Finalisasi otomatis: Mahasiswa tidak melakukan presensi.",
+      "recorded_at": "2026-10-29 11:31:56",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 21,
+      "session_id": 5,
+      "student_id": 3,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "Finalisasi otomatis: Mahasiswa tidak melakukan presensi.",
+      "recorded_at": "2026-10-29 11:31:56",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 22,
+      "session_id": 10,
+      "student_id": 1,
+      "scan_time": "22:14:49",
+      "status": "PRESENT",
+      "remarks": "Tepat waktu (22:14:49 ≤ 22:24:00)",
+      "recorded_at": "2026-10-31 15:14:49",
+      "score": 88,
+      "score_feedback": "sudah cukup baik , penjelasan kurang detail\n"
+    },
+    {
+      "id": 23,
+      "session_id": 10,
+      "student_id": 4,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "sakit",
+      "recorded_at": "2026-10-31 15:16:16",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 24,
+      "session_id": 10,
+      "student_id": 5,
+      "scan_time": "22:27:01",
+      "status": "LATE",
+      "remarks": "Terlambat (22:24:00 < 22:27:01 ≤ 23:09:00)",
+      "recorded_at": "2026-10-31 15:27:01",
+      "score": 55,
+      "score_feedback": "nilai di kurangi karena telat\n"
+    },
+    {
+      "id": 25,
+      "session_id": 10,
+      "student_id": 2,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "Finalisasi manual: Mahasiswa tidak melakukan presensi.",
+      "recorded_at": "2026-10-31 15:28:09",
+      "score": null,
+      "score_feedback": null
+    },
+    {
+      "id": 26,
+      "session_id": 10,
+      "student_id": 3,
+      "scan_time": "-",
+      "status": "ABSENT",
+      "remarks": "Finalisasi manual: Mahasiswa tidak melakukan presensi.",
+      "recorded_at": "2026-10-31 15:28:09",
+      "score": null,
+      "score_feedback": null
+    }
+  ]
+}

@@ -44,6 +44,7 @@ async function startServer({ dbPath, allowSimulatedTime }) {
     DB_PATH: dbPath,
     ALLOW_SIMULATED_TIME: allowSimulatedTime ? 'true' : 'false',
     SEED_DEMO: 'true',
+    SEED_SOURCE: 'builtin',
     NODE_ENV: 'test',
   };
   const child = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], {
@@ -184,6 +185,7 @@ async function runMainSuite(dbPath) {
 
   // Koneksi langsung ke DB server untuk verifikasi jumlah record & memanggil scheduler
   process.env.DB_PATH = dbPath;
+  process.env.SEED_SOURCE = 'builtin';
   const db = require('./server/db');
   const { syncSessionStatuses } = require('./server/scheduler');
   const countRecords = (studentId) =>
