@@ -1,6 +1,6 @@
 # Hasil Pengujian Sistem
 
-Dijalankan: 2026-11-01 01:56:17 WIB (Asia/Jakarta) · Node.js v24.11.0 · perintah `npm test`
+Dijalankan: 2026-11-03 11:39:25 WIB (Asia/Jakarta) · Node.js v24.11.0 · perintah `npm test`
 
 Pengujian black-box dengan teknik Equivalence Partitioning (EP) dan Boundary Value Analysis (BVA).
 Server dijalankan otomatis dengan database sementara dan data demo. Sesi uji dibuat untuk hari esok dengan aturan waktu:

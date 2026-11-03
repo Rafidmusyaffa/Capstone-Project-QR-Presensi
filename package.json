@@ -12,7 +12,8 @@
     "install:all": "npm install",
     "postinstall": "npm --prefix client install --include=dev && npm --prefix client run build",
     "test": "node test-capstone.js",
-    "seed:export": "node server/scripts/export-seed.js"
+    "seed:export": "node server/scripts/export-seed.js",
+    "demo:online": "node scripts/demo-online.js"
   },
   "keywords": [
     "attendance",

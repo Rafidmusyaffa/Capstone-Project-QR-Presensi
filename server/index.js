@@ -21,8 +21,10 @@ const PORT = process.env.PORT || 3000;
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Render berada di belakang 1 reverse proxy; req.ip diambil dari X-Forwarded-For
-app.set('trust proxy', 1);
+// req.ip diambil dari X-Forwarded-For hanya jika dikirim proxy tepercaya:
+// di Render 1 reverse proxy, di lokal hanya cloudflared/proxy di mesin yang sama (loopback),
+// sehingga pengunjung dari jaringan lain tidak bisa memalsukan IP lewat header.
+app.set('trust proxy', process.env.RENDER ? 1 : 'loopback');
 app.disable('x-powered-by');
 
 // Header keamanan dasar

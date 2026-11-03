@@ -63,7 +63,7 @@ npm run dev:client   # terminal 2: Vite di http://localhost:5173
 
 ### Mencoba di HP
 
-Buka `http://<IP-laptop>:3000` dari HP yang terhubung ke Wi-Fi yang sama. Browser hanya mengizinkan kamera lewat **HTTPS** (atau `localhost`), jadi lewat alamat IP biasa scanner kamera tidak aktif. Gunakan input token manual, atau coba setelah di-deploy ke Render (otomatis HTTPS).
+Buka `http://<IP-laptop>:3000` dari HP yang terhubung ke Wi-Fi yang sama. Browser hanya mengizinkan kamera lewat **HTTPS** (atau `localhost`), jadi lewat alamat IP biasa scanner kamera tidak aktif. Gunakan input token manual, pakai [Demo Online](#demo-online-cloudflare-tunnel), atau coba setelah di-deploy ke Render (otomatis HTTPS).
 
 ---
 
@@ -154,13 +154,41 @@ presensi-qr/
 ├── docs/
 │   ├── hasil-pengujian.md          # Hasil npm test (dibuat otomatis)
 │   └── ringkasan-perubahan.md      # Catatan perubahan untuk pembaruan proposal
+├── scripts/demo-online.js          # Server + Cloudflare Quick Tunnel untuk demo lewat HTTPS
 ├── test-capstone.js                # Pengujian black-box TC-01 s/d TC-19
 ├── .env.example                    # Contoh konfigurasi
 ├── install.bat / start.bat         # Pintasan install & jalankan di Windows
+├── demo-online.bat                 # Pintasan demo online (Cloudflare Tunnel)
 └── package.json
 ```
 
 `client/dist/` dan file database (`*.db`) tidak disimpan di git; keduanya dibuat ulang otomatis.
+
+---
+
+## Demo Online (Cloudflare Tunnel)
+
+Cara cepat membuat aplikasi di laptop bisa dibuka dari HP lewat **HTTPS**, sehingga scanner kamera berfungsi, tanpa deploy.
+
+**Prasyarat:** [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) terinstall. Setelah install, buka terminal baru agar PATH terbaca.
+
+```bash
+npm run demo:online
+```
+
+Di Windows bisa juga klik dua kali `demo-online.bat`. Skrip ini:
+1. Mem-build frontend jika `client/dist` belum ada.
+2. Menyalakan server di port 3000 (`NODE_ENV=production`, simulasi waktu dimatikan).
+3. Membuka Cloudflare Quick Tunnel, lalu menampilkan link `https://xxxx.trycloudflare.com`, menyalinnya ke clipboard, dan membukanya di browser.
+
+Tekan **Ctrl+C** untuk berhenti; server dan tunnel dihentikan bersama sehingga port 3000 bebas lagi.
+
+Catatan:
+- **Link berubah setiap kali dijalankan.** Bagikan link terbaru ke dosen sebelum demo. Jika link baru belum bisa dibuka, tunggu beberapa detik.
+- **Hanya aktif selama laptop menyala, terhubung internet, dan jendela demo tetap terbuka.**
+- **Data yang dipakai adalah database lokal** `server/presensi.db` apa adanya (tidak di-reset atau di-seed ulang). Semua perubahan saat demo langsung tersimpan di sana.
+- Siapa pun yang punya link bisa membuka halaman login, jadi pastikan password akun di database lokal tidak mudah ditebak jika link disebar luas.
+- Isi `JWT_SECRET` di `.env` agar login tidak terputus saat server dijalankan ulang.
 
 ---
 
