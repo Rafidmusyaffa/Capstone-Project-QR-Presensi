@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiRequest } from '../api';
 import useAutoRefresh from '../useAutoRefresh';
 import ClassRosterModal from '../components/ClassRosterModal';
 import StudentCard from '../components/StudentCard';
 import SessionStatusBadge from '../components/SessionStatusBadge';
+import AttendanceStatusBadge from '../components/AttendanceStatusBadge';
+import { useDialog } from '../components/dialogContext';
 import { LoadErrorBanner } from '../components/LoadError';
 import { SESSION_STATUSES } from '../sessionStatus';
 import { QRCodeSVG } from 'qrcode.react';
@@ -33,6 +35,9 @@ import {
   UserCheck,
   UserX,
 } from 'lucide-react';
+
+// Tombol aksi pada daftar kartu di HP: area sentuh minimal 44px
+const MOBILE_ACTION = 'inline-flex items-center justify-center gap-1.5 min-h-11 px-2 rounded-xl text-xs font-bold cursor-pointer transition-colors';
 
 export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
   // Tab terakhir diingat selama tab browser terbuka, agar "Kembali" dari detail sesi tidak reset ke Ringkasan
@@ -138,6 +143,16 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
   });
 
   const [formError, setFormError] = useState(null);
+  const dialog = useDialog();
+
+  // Bar tab bisa digeser di HP; tab aktif selalu digeser ke area yang terlihat
+  const tabBarRef = useRef(null);
+  useEffect(() => {
+    const bar = tabBarRef.current;
+    const active = bar?.querySelector('[aria-selected="true"]');
+    if (!bar || !active || bar.scrollWidth <= bar.clientWidth) return;
+    bar.scrollTo({ left: active.offsetLeft - (bar.clientWidth - active.offsetWidth) / 2, behavior: 'smooth' });
+  }, [activeTab]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -170,18 +185,18 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
   useAutoRefresh(fetchAll);
 
   const handleDeleteSession = async (ses) => {
-    if (
-      !confirm(
-        `[ADMIN ACTION] Apakah Anda yakin ingin menghapus Sesi Pertemuan #${ses.meeting_number} (${ses.class_name} - ${ses.session_code})?\n\nSeluruh data presensi mahasiswa pada sesi ini akan dibersihkan dari database.`
-      )
-    ) {
-      return;
-    }
+    const ok = await dialog.confirm({
+      title: 'Hapus sesi pertemuan?',
+      message: `Pertemuan #${ses.meeting_number} • ${ses.class_name} (${ses.session_code}) beserta seluruh data presensinya akan dihapus permanen.`,
+      confirmLabel: 'Hapus',
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/sessions/${ses.id}`, { method: 'DELETE' });
+      dialog.notify('Sesi pertemuan berhasil dihapus.', 'success');
       fetchAll();
     } catch (err) {
-      alert(err.message);
+      dialog.notify(err.message, 'error');
     }
   };
 
@@ -232,41 +247,60 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
   };
 
   const handleDeleteStudent = async (student) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus mahasiswa "${student.name}" (NIM: ${student.nim})? Semua data presensi dan kelas mahasiswa ini juga akan terhapus.`)) {
-      try {
-        await apiRequest(`/users/students/${student.id}`, {
-          method: 'DELETE',
-        });
-        fetchAll();
-      } catch (err) {
-        alert(err.message);
-      }
+    const ok = await dialog.confirm({
+      title: 'Hapus mahasiswa?',
+      message: `${student.name} (NIM ${student.nim}) akan dihapus. Semua data presensi dan keanggotaan kelasnya juga ikut terhapus.`,
+      confirmLabel: 'Hapus',
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(`/users/students/${student.id}`, {
+        method: 'DELETE',
+      });
+      dialog.notify('Mahasiswa berhasil dihapus.', 'success');
+      fetchAll();
+    } catch (err) {
+      dialog.notify(err.message, 'error');
     }
   };
 
   const handleRegenerateQr = async (student) => {
-    if (!confirm(`Buat ulang QR Code untuk "${student.name}" (NIM: ${student.nim})?\n\nQR lama akan langsung TIDAK BERLAKU dan kartu QR harus dicetak ulang.`)) {
-      return;
-    }
+    const ok = await dialog.confirm({
+      title: 'Buat ulang QR Code?',
+      message: `QR lama milik ${student.name} (NIM ${student.nim}) akan langsung tidak berlaku dan kartu QR harus dicetak ulang.`,
+      confirmLabel: 'Buat Ulang',
+    });
+    if (!ok) return;
     try {
       const res = await apiRequest(`/users/students/${student.id}/regenerate-qr`, { method: 'POST' });
       if (selectedStudentForQR?.id === student.id) {
         setSelectedStudentForQR({ ...selectedStudentForQR, permanent_qr_token: res.permanent_qr_token });
       }
       fetchAll();
-      alert(res.message);
+      dialog.notify(res.message, 'success');
     } catch (err) {
-      alert(err.message);
+      dialog.notify(err.message, 'error');
     }
   };
 
   // Mahasiswa nonaktif tetap bisa login & melihat riwayat, tetapi scan QR ditolak (BR-01)
   const handleToggleStudentActive = async (student) => {
     const activate = !student.is_active;
-    const question = activate
-      ? `Aktifkan kembali "${student.name}" (NIM: ${student.nim})?`
-      : `Nonaktifkan "${student.name}" (NIM: ${student.nim})?\n\nMahasiswa nonaktif tidak dapat melakukan presensi, tetapi riwayat presensinya tetap tersimpan.`;
-    if (!confirm(question)) return;
+    const ok = await dialog.confirm(
+      activate
+        ? {
+            title: 'Aktifkan kembali mahasiswa?',
+            message: `${student.name} (NIM ${student.nim}) dapat melakukan presensi lagi.`,
+            confirmLabel: 'Aktifkan',
+            tone: 'primary',
+          }
+        : {
+            title: 'Nonaktifkan mahasiswa?',
+            message: `${student.name} (NIM ${student.nim}) tidak dapat melakukan presensi, tetapi riwayat presensinya tetap tersimpan.`,
+            confirmLabel: 'Nonaktifkan',
+          }
+    );
+    if (!ok) return;
     try {
       await apiRequest(`/users/students/${student.id}/status`, {
         method: 'PATCH',
@@ -274,7 +308,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
       });
       fetchAll();
     } catch (err) {
-      alert(err.message);
+      dialog.notify(err.message, 'error');
     }
   };
 
@@ -325,15 +359,20 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
   };
 
   const handleDeleteLecturer = async (lecturer) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus dosen "${lecturer.name}" (NIP: ${lecturer.nip})?`)) {
-      try {
-        await apiRequest(`/users/lecturers/${lecturer.id}`, {
-          method: 'DELETE',
-        });
-        fetchAll();
-      } catch (err) {
-        alert(err.message);
-      }
+    const ok = await dialog.confirm({
+      title: 'Hapus dosen?',
+      message: `${lecturer.name} (NIP ${lecturer.nip}) akan dihapus dari sistem.`,
+      confirmLabel: 'Hapus',
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(`/users/lecturers/${lecturer.id}`, {
+        method: 'DELETE',
+      });
+      dialog.notify('Dosen berhasil dihapus.', 'success');
+      fetchAll();
+    } catch (err) {
+      dialog.notify(err.message, 'error');
     }
   };
 
@@ -378,13 +417,14 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
       await fetchAll();
 
       if (newId) {
-        if (
-          confirm(
-            `Kelas "${newName}" (${newCode}) berhasil dibuat!\n\nApakah Anda ingin langsung menentukan dan mendaftarkan mahasiswa ke kelas ini sekarang?`
-          )
-        ) {
-          setRosterClass({ id: newId, name: newName, code: newCode });
-        }
+        const ok = await dialog.confirm({
+          title: 'Kelas berhasil dibuat',
+          message: `${newName} (${newCode}) sudah tersimpan. Daftarkan mahasiswa ke kelas ini sekarang?`,
+          confirmLabel: 'Atur Peserta',
+          cancelLabel: 'Nanti',
+          tone: 'primary',
+        });
+        if (ok) setRosterClass({ id: newId, name: newName, code: newCode });
       }
     } catch (err) {
       setFormError(err.message);
@@ -437,15 +477,20 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
   };
 
   const handleDeleteClass = async (cls) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus kelas "${cls.name}" (${cls.code})? Seluruh sesi dan rekap presensi kelas ini akan terhapus.`)) {
-      try {
-        await apiRequest(`/classes/${cls.id}`, {
-          method: 'DELETE',
-        });
-        fetchAll();
-      } catch (err) {
-        alert(err.message);
-      }
+    const ok = await dialog.confirm({
+      title: 'Hapus kelas?',
+      message: `${cls.name} (${cls.code}) beserta seluruh sesi dan rekap presensinya akan dihapus permanen.`,
+      confirmLabel: 'Hapus',
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(`/classes/${cls.id}`, {
+        method: 'DELETE',
+      });
+      dialog.notify('Kelas berhasil dihapus.', 'success');
+      fetchAll();
+    } catch (err) {
+      dialog.notify(err.message, 'error');
     }
   };
 
@@ -541,69 +586,70 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
         </div>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex items-center gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/60 overflow-x-auto text-xs font-bold">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2 rounded-xl cursor-pointer transition-all whitespace-nowrap ${
-            activeTab === 'overview'
-              ? 'bg-white text-slate-900 shadow-sm shadow-slate-200 border border-slate-200/60'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          Audit Log Presensi
-        </button>
-        <button
-          onClick={() => setActiveTab('students')}
-          className={`px-4 py-2 rounded-xl cursor-pointer transition-all whitespace-nowrap ${
-            activeTab === 'students'
-              ? 'bg-white text-slate-900 shadow-sm shadow-slate-200 border border-slate-200/60'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          Data Mahasiswa ({students.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('lecturers')}
-          className={`px-4 py-2 rounded-xl cursor-pointer transition-all whitespace-nowrap ${
-            activeTab === 'lecturers'
-              ? 'bg-white text-slate-900 shadow-sm shadow-slate-200 border border-slate-200/60'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          Data Dosen ({lecturers.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('classes')}
-          className={`px-4 py-2 rounded-xl cursor-pointer transition-all whitespace-nowrap ${
-            activeTab === 'classes'
-              ? 'bg-white text-slate-900 shadow-sm shadow-slate-200 border border-slate-200/60'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          Data Kelas & Jadwal ({classes.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('sessions')}
-          className={`px-4 py-2 rounded-xl cursor-pointer transition-all whitespace-nowrap ${
-            activeTab === 'sessions'
-              ? 'bg-white text-slate-900 shadow-sm shadow-slate-200 border border-slate-200/60'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          Sesi Perkuliahan ({sessions.length})
-        </button>
+      {/* Tabs Navigation: di HP bisa digeser ke samping */}
+      <div
+        ref={tabBarRef}
+        role="tablist"
+        aria-label="Menu panel admin"
+        className="relative flex items-center gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/60 overflow-x-auto snap-x snap-mandatory scroll-px-1.5 text-xs font-bold"
+      >
+        {[
+          { id: 'overview', label: 'Audit Log Presensi' },
+          { id: 'students', label: <>Data Mahasiswa ({students.length})</> },
+          { id: 'lecturers', label: <>Data Dosen ({lecturers.length})</> },
+          { id: 'classes', label: <>Data Kelas & Jadwal ({classes.length})</> },
+          { id: 'sessions', label: <>Sesi Perkuliahan ({sessions.length})</> },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`shrink-0 snap-start min-h-11 sm:min-h-0 px-4 py-2 rounded-xl cursor-pointer transition-all whitespace-nowrap ${
+              activeTab === tab.id
+                ? 'bg-white text-slate-900 shadow-sm shadow-slate-200 border border-slate-200/60'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* TAB CONTENT: Audit Log */}
       {activeTab === 'overview' && (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-          <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+          <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <h3 className="text-sm font-bold text-slate-800">10 Log Aktivitas Presensi Terbaru</h3>
             <span className="text-xs text-slate-400">Pencatatan real-time</span>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Tampilan kartu untuk layar HP */}
+          <ul className="md:hidden divide-y divide-slate-100">
+            {recentAttendances?.map((r) => (
+              <li key={r.id} className="p-4 space-y-1.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm text-slate-900 break-words">{r.student_name}</div>
+                    <div className="text-xs text-slate-500 font-mono">NIM: {r.student_nim}</div>
+                  </div>
+                  <AttendanceStatusBadge status={r.status} />
+                </div>
+                <div className="text-xs font-semibold text-slate-700 break-words">
+                  {r.class_name} • Pertemuan #{r.meeting_number}
+                </div>
+                <div className="text-xs text-slate-500">
+                  Scan <span className="font-mono font-bold text-slate-700">{r.scan_time}</span> • Direkam{' '}
+                  <span className="font-mono">{r.recorded_at}</span>
+                </div>
+              </li>
+            ))}
+            {!recentAttendances?.length && (
+              <li className="p-6 text-center text-xs text-slate-400">Belum ada aktivitas presensi.</li>
+            )}
+          </ul>
+
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
                 <tr>
@@ -661,14 +707,88 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
             </p>
             <button
               onClick={() => setIsStudentModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
+              className="flex items-center justify-center gap-2 min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
             >
               <Plus className="w-4 h-4" /> Tambah Mahasiswa
             </button>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
+            {/* Tampilan kartu untuk layar HP */}
+            <ul className="md:hidden divide-y divide-slate-100">
+              {students.map((s) => (
+                <li key={s.id} className={`p-4 space-y-3 ${s.is_active ? '' : 'bg-slate-50/80'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className={`font-bold text-sm break-words ${s.is_active ? 'text-slate-900' : 'text-slate-500'}`}>{s.name}</div>
+                      <div className="text-xs text-slate-500 font-mono break-all">NIM {s.nim} • {s.username}</div>
+                      <div className="text-xs text-slate-500">{s.major}</div>
+                    </div>
+                    {s.is_active ? (
+                      <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Aktif</span>
+                    ) : (
+                      <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">Nonaktif</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStudentForQR(s)}
+                    title="Lihat / Cetak QR Code Mahasiswa"
+                    className="w-full flex items-center gap-3 p-2 bg-slate-50 hover:bg-indigo-50/70 border border-slate-200 rounded-2xl text-left cursor-pointer transition-colors"
+                  >
+                    <span className="p-1 bg-white rounded-xl border border-slate-200 shrink-0">
+                      {s.permanent_qr_token ? (
+                        <QRCodeSVG value={s.permanent_qr_token} size={40} level="M" />
+                      ) : (
+                        <QrCode className="w-10 h-10 text-slate-300" />
+                      )}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-mono text-xs font-bold text-slate-900 break-all">{s.permanent_qr_token || '—'}</span>
+                      <span className="text-xs text-indigo-600 font-semibold flex items-center gap-1 mt-0.5">
+                        <Eye className="w-3.5 h-3.5" /> Perbesar & Cetak
+                      </span>
+                    </span>
+                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => handleOpenEditStudent(s)}
+                      title="Edit Data Mahasiswa"
+                      className={`${MOBILE_ACTION} bg-amber-50 hover:bg-amber-100 text-amber-700`}
+                    >
+                      <Edit className="w-4 h-4" /> Edit
+                    </button>
+                    <button
+                      onClick={() => handleToggleStudentActive(s)}
+                      title={s.is_active ? 'Nonaktifkan Mahasiswa (tidak bisa presensi)' : 'Aktifkan Kembali Mahasiswa'}
+                      className={`${MOBILE_ACTION} ${s.is_active ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'}`}
+                    >
+                      {s.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                      {s.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                    </button>
+                    <button
+                      onClick={() => handleRegenerateQr(s)}
+                      title="Buat Ulang QR (QR lama tidak berlaku lagi)"
+                      className={`${MOBILE_ACTION} bg-violet-50 hover:bg-violet-100 text-violet-700`}
+                    >
+                      <RefreshCw className="w-4 h-4" /> QR Baru
+                    </button>
+                    <button
+                      onClick={() => handleDeleteStudent(s)}
+                      title="Hapus Mahasiswa"
+                      className={`${MOBILE_ACTION} bg-rose-50 hover:bg-rose-100 text-rose-700`}
+                    >
+                      <Trash2 className="w-4 h-4" /> Hapus
+                    </button>
+                  </div>
+                </li>
+              ))}
+              {students.length === 0 && (
+                <li className="p-6 text-center text-xs text-slate-400">Belum ada mahasiswa terdaftar.</li>
+              )}
+            </ul>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
                   <tr>
@@ -781,14 +901,49 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
             </p>
             <button
               onClick={() => setIsLecturerModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
+              className="flex items-center justify-center gap-2 min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
             >
               <Plus className="w-4 h-4" /> Tambah Dosen
             </button>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
+            {/* Tampilan kartu untuk layar HP */}
+            <ul className="md:hidden divide-y divide-slate-100">
+              {lecturers.map((l) => (
+                <li key={l.id} className="p-4 space-y-3">
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm text-slate-900 break-words">{l.name}</div>
+                    <div className="text-xs text-slate-500 font-mono break-all">NIP {l.nip}</div>
+                    <div className="text-xs text-slate-600 break-all">{l.email || '-'}</div>
+                    <div className="text-xs text-slate-500">
+                      Akun: <span className="font-mono">{l.username}</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => handleOpenEditLecturer(l)}
+                      title="Edit Data Dosen"
+                      className={`${MOBILE_ACTION} bg-amber-50 hover:bg-amber-100 text-amber-700`}
+                    >
+                      <Edit className="w-4 h-4" /> Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteLecturer(l)}
+                      title="Hapus Dosen"
+                      className={`${MOBILE_ACTION} bg-rose-50 hover:bg-rose-100 text-rose-700`}
+                    >
+                      <Trash2 className="w-4 h-4" /> Hapus
+                    </button>
+                  </div>
+                </li>
+              ))}
+              {lecturers.length === 0 && (
+                <li className="p-6 text-center text-xs text-slate-400">Belum ada dosen terdaftar.</li>
+              )}
+            </ul>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
                   <tr>
@@ -842,7 +997,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
             </p>
             <button
               onClick={() => setIsClassModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
+              className="flex items-center justify-center gap-2 min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
             >
               <Plus className="w-4 h-4" /> Tambah Kelas & Jadwal
             </button>
@@ -876,31 +1031,35 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   )}
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs font-semibold">
+                <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-between text-xs font-semibold">
                   <button
                     onClick={() => setRosterClass(cls)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl cursor-pointer transition-colors font-bold"
+                    className="flex items-center justify-center gap-1.5 min-h-11 sm:min-h-0 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl cursor-pointer transition-colors font-bold whitespace-nowrap"
                     title="Tentukan & Kelola Mahasiswa di Kelas Ini"
                   >
-                    <Users className="w-3.5 h-3.5" /> Kelola Mahasiswa
+                    <Users className="w-3.5 h-3.5" />
+                    <span className="sm:hidden">Peserta</span>
+                    <span className="hidden sm:inline">Kelola Mahasiswa</span>
                   </button>
-                  <div className="flex items-center gap-2">
+                  <div className="contents sm:flex sm:items-center sm:gap-2">
                     <button
                       onClick={() => onViewClassReport(cls.id)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl cursor-pointer transition-colors"
+                      className="flex items-center justify-center gap-1 min-h-11 sm:min-h-0 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl cursor-pointer transition-colors whitespace-nowrap"
                       title="Lihat rekap presensi & nilai kelas ini"
                     >
                       <FileText className="w-3.5 h-3.5" /> Rekap
                     </button>
                     <button
                       onClick={() => handleOpenEditClass(cls)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl cursor-pointer transition-colors"
+                      className="flex items-center justify-center gap-1 min-h-11 sm:min-h-0 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl cursor-pointer transition-colors whitespace-nowrap"
                     >
-                      <Edit className="w-3.5 h-3.5" /> Edit Kelas
+                      <Edit className="w-3.5 h-3.5" />
+                      <span className="sm:hidden">Edit</span>
+                      <span className="hidden sm:inline">Edit Kelas</span>
                     </button>
                     <button
                       onClick={() => handleDeleteClass(cls)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl cursor-pointer transition-colors"
+                      className="flex items-center justify-center gap-1 min-h-11 sm:min-h-0 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl cursor-pointer transition-colors whitespace-nowrap"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> Hapus
                     </button>
@@ -937,14 +1096,14 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="grid grid-cols-1 gap-2 text-xs sm:flex sm:flex-wrap sm:items-center">
               {/* Filter Class */}
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5">
+              <div className="flex items-center gap-1.5 min-w-0 min-h-11 sm:min-h-0 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5">
                 <Filter className="w-3.5 h-3.5 text-slate-400" />
                 <select
                   value={sessionClassFilter}
                   onChange={(e) => setSessionClassFilter(e.target.value)}
-                  className="bg-transparent text-xs text-slate-700 font-semibold focus:outline-hidden"
+                  className="w-full min-w-0 sm:w-auto bg-transparent text-xs text-slate-700 font-semibold focus:outline-hidden"
                 >
                   <option value="all">Semua Kelas ({classes.length})</option>
                   {classes.map((c) => (
@@ -956,11 +1115,11 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
               </div>
 
               {/* Filter Status */}
-              <div className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5">
+              <div className="flex sm:block items-center min-w-0 min-h-11 sm:min-h-0 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5">
                 <select
                   value={sessionStatusFilter}
                   onChange={(e) => setSessionStatusFilter(e.target.value)}
-                  className="bg-transparent text-xs text-slate-700 font-semibold focus:outline-hidden"
+                  className="w-full min-w-0 sm:w-auto bg-transparent text-xs text-slate-700 font-semibold focus:outline-hidden"
                 >
                   <option value="all">Semua Status</option>
                   {SESSION_STATUSES.map((s) => (
@@ -970,12 +1129,12 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
               </div>
 
               {/* Sort Order */}
-              <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-1.5 text-indigo-800">
+              <div className="flex items-center gap-1.5 min-w-0 min-h-11 sm:min-h-0 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-1.5 text-indigo-800">
                 <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600" />
                 <select
                   value={sessionSortOrder}
                   onChange={(e) => setSessionSortOrder(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-indigo-900 focus:outline-hidden cursor-pointer"
+                  className="w-full min-w-0 sm:w-auto bg-transparent text-xs font-bold text-indigo-900 focus:outline-hidden cursor-pointer"
                 >
                   <option value="date_asc">Urut Tanggal: Terlama → Terbaru (Kronologis)</option>
                   <option value="date_desc">Urut Tanggal: Terbaru → Terlama</option>
@@ -987,7 +1146,65 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
 
           {/* Sessions Table / List */}
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
+            {/* Tampilan kartu untuk layar HP */}
+            <ul className="md:hidden divide-y divide-slate-100">
+              {adminFilteredSessions.length === 0 ? (
+                <li className="p-8 text-center text-xs text-slate-400">Tidak ada sesi pertemuan yang ditemukan.</li>
+              ) : (
+                adminFilteredSessions.map((ses) => (
+                  <li key={ses.id} className="p-4 space-y-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-mono font-bold rounded text-[10px]">
+                            {ses.class_code}
+                          </span>
+                          <span className="font-bold text-sm text-slate-900">Pertemuan #{ses.meeting_number}</span>
+                        </div>
+                        <div className="font-semibold text-sm text-slate-800 mt-0.5 break-words">{ses.class_name}</div>
+                      </div>
+                      <SessionStatusBadge status={ses.status} size="sm" />
+                    </div>
+                    <div className="text-xs text-slate-500 space-y-0.5">
+                      <div>
+                        <span className="font-mono">{ses.meeting_date}</span> •{' '}
+                        <span className="font-mono">{ses.start_time} - {ses.end_time}</span> (telat s/d{' '}
+                        <span className="font-mono">{ses.late_until}</span>)
+                      </div>
+                      <div className="break-words">
+                        {ses.lecturer_name || '-'} • {ses.room || 'Ruang Kuliah'}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold">
+                      <span className="text-emerald-700">{ses.present_count || 0} Hadir</span>
+                      <span className="text-amber-700">{ses.late_count || 0} Telat</span>
+                      <span className="text-rose-700">{ses.absent_count || 0} Absen</span>
+                      <span className="text-slate-400 font-medium">dari {ses.total_students || 0} mhs</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {onSelectSession && (
+                        <button
+                          onClick={() => onSelectSession(ses.id)}
+                          title="Buka Detail & Monitor Sesi"
+                          className={`${MOBILE_ACTION} bg-indigo-50 hover:bg-indigo-100 text-indigo-700`}
+                        >
+                          <Eye className="w-4 h-4" /> Monitor
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteSession(ses)}
+                        title="Hapus Sesi Ini Dari Sistem"
+                        className={`${MOBILE_ACTION} bg-rose-50 hover:bg-rose-100 text-rose-700 ${onSelectSession ? '' : 'col-span-2'}`}
+                      >
+                        <Trash2 className="w-4 h-4" /> Hapus
+                      </button>
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
                   <tr>
@@ -1083,10 +1300,10 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
       {/* 1. Add Student Modal */}
       {isStudentModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain">
+            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
               <h3 className="font-bold text-sm">Tambah Mahasiswa Baru</h3>
-              <button onClick={() => setIsStudentModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+              <button onClick={() => setIsStudentModalOpen(false)} className="p-2 -m-2 rounded-lg text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1172,7 +1389,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
               <p className="text-[11px] text-indigo-600 italic">
                 * Permanent QR Token akan otomatis dibuatkan secara unik.
               </p>
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+              <div className="modal-footer max-sm:sticky max-sm:bottom-0 max-sm:-mx-6 max-sm:-mb-6 max-sm:px-6 max-sm:pb-6 max-sm:bg-white pt-3 flex justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsStudentModalOpen(false)}
@@ -1192,10 +1409,10 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
       {/* 2. Edit Student Modal */}
       {isEditStudentModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
               <h3 className="font-bold text-sm">Edit Data Mahasiswa</h3>
-              <button onClick={() => setIsEditStudentModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+              <button onClick={() => setIsEditStudentModalOpen(false)} className="p-2 -m-2 rounded-lg text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1274,7 +1491,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between max-sm:gap-3">
                 <p className="text-[11px] text-slate-400">
                   * Kosongkan password baru jika tidak ingin mengubah kata sandi mahasiswa ini.
                 </p>
@@ -1286,7 +1503,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   Set "mhs123"
                 </button>
               </div>
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+              <div className="modal-footer max-sm:sticky max-sm:bottom-0 max-sm:-mx-6 max-sm:-mb-6 max-sm:px-6 max-sm:pb-6 max-sm:bg-white pt-3 flex justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsEditStudentModalOpen(false)}
@@ -1306,10 +1523,10 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
       {/* 3. Add Lecturer Modal */}
       {isLecturerModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain">
+            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
               <h3 className="font-bold text-sm">Tambah Dosen Pengajar</h3>
-              <button onClick={() => setIsLecturerModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+              <button onClick={() => setIsLecturerModalOpen(false)} className="p-2 -m-2 rounded-lg text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1392,7 +1609,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   </div>
                 </div>
               </div>
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+              <div className="modal-footer max-sm:sticky max-sm:bottom-0 max-sm:-mx-6 max-sm:-mb-6 max-sm:px-6 max-sm:pb-6 max-sm:bg-white pt-3 flex justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsLecturerModalOpen(false)}
@@ -1412,10 +1629,10 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
       {/* 4. Edit Lecturer Modal */}
       {isEditLecturerModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
               <h3 className="font-bold text-sm">Edit Data Dosen</h3>
-              <button onClick={() => setIsEditLecturerModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+              <button onClick={() => setIsEditLecturerModalOpen(false)} className="p-2 -m-2 rounded-lg text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1493,7 +1710,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between max-sm:gap-3">
                 <p className="text-[11px] text-slate-400">
                   * Kosongkan password baru jika tidak ingin mengubah kata sandi dosen ini.
                 </p>
@@ -1505,7 +1722,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   Set "dosen123"
                 </button>
               </div>
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+              <div className="modal-footer max-sm:sticky max-sm:bottom-0 max-sm:-mx-6 max-sm:-mb-6 max-sm:px-6 max-sm:pb-6 max-sm:bg-white pt-3 flex justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsEditLecturerModalOpen(false)}
@@ -1525,10 +1742,10 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
       {/* 5. Add Class Modal */}
       {isClassModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain">
+            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
               <h3 className="font-bold text-sm">Tambah Kelas & Jadwal Baru</h3>
-              <button onClick={() => setIsClassModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+              <button onClick={() => setIsClassModalOpen(false)} className="p-2 -m-2 rounded-lg text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1572,8 +1789,8 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   placeholder="Pemrograman Mobile"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="col-span-2 sm:col-span-1">
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">Hari</label>
                   <select
                     value={classForm.day_of_week}
@@ -1632,7 +1849,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   ))}
                 </div>
               </div>
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+              <div className="modal-footer max-sm:sticky max-sm:bottom-0 max-sm:-mx-6 max-sm:-mb-6 max-sm:px-6 max-sm:pb-6 max-sm:bg-white pt-3 flex justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsClassModalOpen(false)}
@@ -1652,10 +1869,10 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
       {/* 6. Edit Class Modal */}
       {isEditClassModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
               <h3 className="font-bold text-sm">Edit Data Kelas & Jadwal</h3>
-              <button onClick={() => setIsEditClassModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+              <button onClick={() => setIsEditClassModalOpen(false)} className="p-2 -m-2 rounded-lg text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1697,8 +1914,8 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="col-span-2 sm:col-span-1">
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">Hari</label>
                   <select
                     value={editClassForm.day_of_week}
@@ -1757,7 +1974,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
                   ))}
                 </div>
               </div>
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+              <div className="modal-footer max-sm:sticky max-sm:bottom-0 max-sm:-mx-6 max-sm:-mb-6 max-sm:px-6 max-sm:pb-6 max-sm:bg-white pt-3 flex justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsEditClassModalOpen(false)}
@@ -1791,7 +2008,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
           <div className="relative max-w-md w-full">
             <button
               onClick={() => setSelectedStudentForQR(null)}
-              className="absolute -top-3 -right-3 z-20 w-8 h-8 rounded-full bg-slate-900 text-white hover:bg-slate-800 flex items-center justify-center font-bold text-sm shadow-xl cursor-pointer border-2 border-white transition-all"
+              className="absolute -top-2 -right-1 sm:-top-3 sm:-right-3 z-20 w-10 h-10 sm:w-8 sm:h-8 rounded-full bg-slate-900 text-white hover:bg-slate-800 flex items-center justify-center font-bold text-sm shadow-xl cursor-pointer border-2 border-white transition-all"
             >
               ✕
             </button>
@@ -1799,7 +2016,7 @@ export default function AdminDashboard({ onSelectSession, onViewClassReport }) {
             <div className="mt-3 flex justify-center">
               <button
                 onClick={() => handleRegenerateQr(selectedStudentForQR)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-violet-50 text-violet-700 border border-violet-200 rounded-xl text-xs font-bold shadow-md cursor-pointer transition-colors"
+                className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-0 px-4 py-2 bg-white hover:bg-violet-50 text-violet-700 border border-violet-200 rounded-xl text-xs font-bold shadow-md cursor-pointer transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> Buat Ulang QR
               </button>

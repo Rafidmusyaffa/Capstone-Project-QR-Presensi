@@ -1,8 +1,10 @@
 import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Download, Printer, ShieldCheck, AlertCircle, QrCode } from 'lucide-react';
+import { Download, Printer, ShieldCheck, AlertCircle, QrCode, Copy } from 'lucide-react';
+import { useDialog } from './dialogContext';
 
 export default function StudentCard({ student }) {
+  const dialog = useDialog();
   if (!student) return null;
 
   // Token QR hanya dikirim backend ke admin dan ke mahasiswa pemiliknya
@@ -28,6 +30,15 @@ export default function StudentCard({ student }) {
       downloadLink.click();
     };
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  };
+
+  const handleCopyToken = async () => {
+    try {
+      await navigator.clipboard.writeText(student.permanent_qr_token);
+      dialog.notify('Token QR disalin.', 'success');
+    } catch {
+      dialog.notify('Token tidak dapat disalin otomatis. Salin secara manual.', 'error');
+    }
   };
 
   const handlePrint = () => {
@@ -81,16 +92,27 @@ export default function StudentCard({ student }) {
         </div>
 
         {/* Token Info */}
-        <div className="mt-5 p-3.5 bg-slate-50 border border-slate-200/70 rounded-2xl flex items-center justify-between text-left text-xs">
-          <div>
+        <div className="mt-5 p-3.5 bg-slate-50 border border-slate-200/70 rounded-2xl flex items-center justify-between gap-3 text-left text-xs">
+          <div className="min-w-0">
             <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">QR Token Tetap</span>
-            <span className="font-mono text-slate-700 font-bold truncate block max-w-[210px] text-xs">
+            <span className="font-mono text-slate-700 font-bold break-all block text-xs">
               {student.permanent_qr_token || '—'}
             </span>
           </div>
-          <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-bold rounded-lg text-[10px]">
-            PERMANENT
-          </span>
+          {hasToken ? (
+            <button
+              type="button"
+              onClick={handleCopyToken}
+              title="Salin token QR"
+              className="shrink-0 inline-flex items-center gap-1 min-h-11 sm:min-h-0 px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold rounded-lg text-[11px] cursor-pointer transition-colors"
+            >
+              <Copy className="w-3.5 h-3.5" /> Salin
+            </button>
+          ) : (
+            <span className="shrink-0 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-bold rounded-lg text-[10px]">
+              PERMANENT
+            </span>
+          )}
         </div>
 
         {/* Context Note */}
@@ -106,13 +128,13 @@ export default function StudentCard({ student }) {
           <button
             onClick={handleDownloadQR}
             disabled={!hasToken}
-            className="flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center justify-center gap-2 min-h-11 sm:min-h-0 py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" /> Download QR
           </button>
           <button
             onClick={handlePrint}
-            className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-xs rounded-xl border border-slate-200/70 transition-all cursor-pointer active:scale-[0.98]"
+            className="flex items-center justify-center gap-2 min-h-11 sm:min-h-0 py-2.5 px-4 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-xs rounded-xl border border-slate-200/70 transition-all cursor-pointer active:scale-[0.98]"
           >
             <Printer className="w-4 h-4" /> Cetak Kartu
           </button>

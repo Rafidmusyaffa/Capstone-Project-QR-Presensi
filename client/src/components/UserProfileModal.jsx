@@ -96,11 +96,11 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+      <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[calc(100dvh-1.5rem)] flex flex-col">
         {/* Header */}
-        <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-xl">
+        <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="hidden sm:block p-2 bg-indigo-500/20 text-indigo-400 rounded-xl">
               <User className="w-5 h-5" />
             </div>
             <div>
@@ -108,18 +108,18 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
               <p className="text-xs text-slate-400">Informasi identitas akun & pengaturan kata sandi</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer">
+          <button onClick={onClose} aria-label="Tutup" className="text-slate-400 hover:text-white p-2 -m-1 rounded-lg cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-6 overflow-y-auto flex-1">
+        <div className="p-4 sm:p-6 space-y-6 overflow-y-auto overscroll-contain flex-1">
           {/* Identity Information Box */}
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <div>
-                <h4 className="font-bold text-base text-slate-900">{user.name || user.username}</h4>
+            <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200">
+              <div className="min-w-0">
+                <h4 className="font-bold text-base text-slate-900 break-words">{user.name || user.username}</h4>
                 <p className="text-xs text-slate-500">Username: <strong className="font-mono text-slate-700">{user.username}</strong></p>
               </div>
               <div>{getRoleBadge(user.role)}</div>
@@ -134,7 +134,7 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
                   </div>
                   <div>
                     <span className="text-slate-400 block font-medium">Email</span>
-                    <span className="font-semibold text-slate-800 truncate block">{user.lecturer?.email || '-'}</span>
+                    <span className="font-semibold text-slate-800 break-all block">{user.lecturer?.email || '-'}</span>
                   </div>
                 </>
               )}
@@ -151,7 +151,7 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
                   </div>
                   <div className="col-span-2 pt-1 border-t border-slate-200">
                     <span className="text-slate-400 block font-medium text-[10px]">Permanent QR Token</span>
-                    <span className="font-mono font-bold text-indigo-700">{user.student?.permanent_qr_token || '-'}</span>
+                    <span className="font-mono font-bold text-indigo-700 break-all">{user.student?.permanent_qr_token || '-'}</span>
                   </div>
                 </>
               )}
@@ -203,7 +203,7 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
                   <button
                     type="button"
                     onClick={() => setShowCurrentPass(!showCurrentPass)}
-                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-700 cursor-pointer"
                   >
                     {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -227,7 +227,7 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
                   <button
                     type="button"
                     onClick={() => setShowNewPass(!showNewPass)}
-                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-700 cursor-pointer"
                     title={showNewPass ? 'Sembunyikan password' : 'Lihat password'}
                   >
                     {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -252,7 +252,7 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
                   <button
                     type="button"
                     onClick={() => setShowConfirmPass(!showConfirmPass)}
-                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-700 cursor-pointer"
                     title={showConfirmPass ? 'Sembunyikan password' : 'Lihat password'}
                   >
                     {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -264,7 +264,7 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                  className="w-full sm:w-auto justify-center min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
                   <Lock className="w-3.5 h-3.5" />
                   <span>{loading ? 'Menyimpan...' : 'Perbarui Password'}</span>
@@ -275,7 +275,7 @@ export default function UserProfileModal({ user, isOpen, onClose, onUserUpdated 
         </div>
 
         {/* Footer */}
-        <div className="bg-slate-50 border-t border-slate-200 p-4 px-6 flex justify-end shrink-0">
+        <div className="modal-footer bg-slate-50 border-t border-slate-200 p-3 sm:p-4 px-4 sm:px-6 flex justify-end shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold cursor-pointer"

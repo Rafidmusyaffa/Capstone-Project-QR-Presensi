@@ -6,6 +6,7 @@ import ClassRosterModal from '../components/ClassRosterModal';
 import SessionStatusBadge from '../components/SessionStatusBadge';
 import { LoadErrorBanner } from '../components/LoadError';
 import { SESSION_STATUSES } from '../sessionStatus';
+import { useDialog } from '../components/dialogContext';
 import {
   Calendar,
   Clock,
@@ -44,6 +45,7 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
   const [createError, setCreateError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const dialog = useDialog();
 
   const fetchData = useCallback(async () => {
     try {
@@ -71,18 +73,18 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
 
   const handleDeleteSession = async (e, ses) => {
     e.stopPropagation();
-    if (
-      !confirm(
-        `Apakah Anda yakin ingin menghapus Sesi Pertemuan #${ses.meeting_number} (${ses.class_name})? Seluruh data presensi di sesi ini akan dihapus permanen.`
-      )
-    ) {
-      return;
-    }
+    const ok = await dialog.confirm({
+      title: 'Hapus sesi pertemuan?',
+      message: `Pertemuan #${ses.meeting_number} • ${ses.class_name} beserta seluruh data presensinya akan dihapus permanen.`,
+      confirmLabel: 'Hapus',
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/sessions/${ses.id}`, { method: 'DELETE' });
+      dialog.notify('Sesi pertemuan berhasil dihapus.', 'success');
       fetchData();
     } catch (err) {
-      alert(err.message);
+      dialog.notify(err.message, 'error');
     }
   };
 
@@ -232,31 +234,31 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
                 {cls.schedules && cls.schedules.length > 0 && (
                   <div className="mt-3.5 p-3 bg-slate-50/80 rounded-2xl text-xs text-slate-700 flex items-center gap-2 font-medium border border-slate-100">
                     <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                    <span className="truncate">
+                    <span className="min-w-0 break-words sm:truncate">
                       {cls.schedules[0].day_of_week}, {cls.schedules[0].start_time} - {cls.schedules[0].end_time} • {cls.schedules[0].room}
                     </span>
                   </div>
                 )}
               </div>
 
-              <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
+              <div className="mt-5 pt-3.5 border-t border-slate-100 grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-between text-xs font-bold">
                 <button
                   onClick={() => setRosterClass(cls)}
-                  className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-indigo-50/50 transition-colors"
+                  className="justify-center min-h-11 sm:min-h-0 bg-indigo-50/60 sm:bg-transparent text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-indigo-50/50 transition-colors whitespace-nowrap"
                   title="Lihat dan kelola mahasiswa yang terdaftar di kelas ini"
                 >
                   <Users className="w-3.5 h-3.5" /> Kelola Peserta
                 </button>
-                <div className="flex items-center gap-2">
+                <div className="contents sm:flex sm:items-center sm:gap-2">
                   <button
                     onClick={() => onViewClassReport(cls.id)}
-                    className="text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer py-1 px-2.5 rounded-lg hover:bg-slate-100 transition-colors"
+                    className="justify-center min-h-11 sm:min-h-0 bg-slate-50 sm:bg-transparent text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer py-1 px-2.5 rounded-lg hover:bg-slate-100 transition-colors whitespace-nowrap"
                   >
                     <FileText className="w-3.5 h-3.5" /> Rekap
                   </button>
                   <button
                     onClick={() => openCreateModal(cls.id)}
-                    className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    className="col-span-2 sm:col-span-1 justify-center min-h-11 sm:min-h-0 bg-indigo-50 text-indigo-700 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
                   >
                     + Sesi
                   </button>
@@ -291,14 +293,14 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="grid grid-cols-1 gap-2 text-xs sm:flex sm:flex-wrap sm:items-center">
             {/* Filter Class */}
-            <div className="flex items-center gap-1.5 bg-slate-50/80 border border-slate-200 rounded-xl px-3 py-1.5">
+            <div className="flex items-center gap-1.5 min-w-0 min-h-11 sm:min-h-0 bg-slate-50/80 border border-slate-200 rounded-xl px-3 py-1.5">
               <Filter className="w-3.5 h-3.5 text-slate-400" />
               <select
                 value={sessionClassFilter}
                 onChange={(e) => setSessionClassFilter(e.target.value)}
-                className="bg-transparent text-xs text-slate-700 font-bold focus:outline-hidden cursor-pointer"
+                className="w-full min-w-0 sm:w-auto bg-transparent text-xs text-slate-700 font-bold focus:outline-hidden cursor-pointer"
               >
                 <option value="all">Semua Kelas ({classes.length})</option>
                 {classes.map((c) => (
@@ -310,11 +312,11 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
             </div>
 
             {/* Filter Status */}
-            <div className="bg-slate-50/80 border border-slate-200 rounded-xl px-3 py-1.5">
+            <div className="flex sm:block items-center min-w-0 min-h-11 sm:min-h-0 bg-slate-50/80 border border-slate-200 rounded-xl px-3 py-1.5">
               <select
                 value={sessionStatusFilter}
                 onChange={(e) => setSessionStatusFilter(e.target.value)}
-                className="bg-transparent text-xs text-slate-700 font-bold focus:outline-hidden cursor-pointer"
+                className="w-full min-w-0 sm:w-auto bg-transparent text-xs text-slate-700 font-bold focus:outline-hidden cursor-pointer"
               >
                 <option value="all">Semua Status</option>
                 {SESSION_STATUSES.map((s) => (
@@ -324,12 +326,12 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
             </div>
 
             {/* Sort Order */}
-            <div className="flex items-center gap-1.5 bg-indigo-50/80 border border-indigo-200/80 rounded-xl px-3 py-1.5 text-indigo-900">
+            <div className="flex items-center gap-1.5 min-w-0 min-h-11 sm:min-h-0 bg-indigo-50/80 border border-indigo-200/80 rounded-xl px-3 py-1.5 text-indigo-900">
               <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600" />
               <select
                 value={sessionSortOrder}
                 onChange={(e) => setSessionSortOrder(e.target.value)}
-                className="bg-transparent text-xs font-bold text-indigo-900 focus:outline-hidden cursor-pointer"
+                className="w-full min-w-0 sm:w-auto bg-transparent text-xs font-bold text-indigo-900 focus:outline-hidden cursor-pointer"
               >
                 <option value="date_asc">Urut: Terlama → Terbaru</option>
                 <option value="date_desc">Urut: Terbaru → Terlama</option>
@@ -419,7 +421,7 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
                   </div>
                   <button
                     onClick={(e) => handleDeleteSession(e, ses)}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                    className="p-3 -m-1.5 sm:m-0 sm:p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                     title="Hapus Sesi Perkuliahan"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -434,12 +436,12 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
       {/* Create Session Modal */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
               <h3 className="font-bold text-base">Buat Attendance Session Baru</h3>
               <button
                 onClick={() => setIsCreateModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                className="text-slate-400 hover:text-white p-2 -m-1 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -552,7 +554,7 @@ export default function DosenDashboard({ user, onSelectSession, onViewClassRepor
                 </div>
               </div>
 
-              <div className="pt-4 flex items-center justify-end gap-2 border-t border-slate-100">
+              <div className="modal-footer max-sm:sticky max-sm:bottom-0 max-sm:-mx-6 max-sm:-mb-6 max-sm:px-6 max-sm:pb-6 max-sm:bg-white pt-4 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}

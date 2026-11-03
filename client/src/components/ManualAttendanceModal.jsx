@@ -43,13 +43,13 @@ export default function ManualAttendanceModal({ session, student, isOpen, onClos
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain animate-in fade-in zoom-in-95 duration-150">
+        <div className="bg-slate-900 text-white p-4 px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <UserCheck className="w-5 h-5 text-indigo-400" />
             <h3 className="font-bold text-sm">Input / Ubah Presensi Manual</h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} aria-label="Tutup" className="p-2 -m-2 rounded-lg text-slate-400 hover:text-white cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -97,7 +97,7 @@ export default function ManualAttendanceModal({ session, student, isOpen, onClos
                 }`}
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>PRESENT</span>
+                <span>Hadir</span>
               </button>
 
               <button
@@ -110,7 +110,7 @@ export default function ManualAttendanceModal({ session, student, isOpen, onClos
                 }`}
               >
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
-                <span>LATE</span>
+                <span>Telat</span>
               </button>
 
               <button
@@ -123,7 +123,7 @@ export default function ManualAttendanceModal({ session, student, isOpen, onClos
                 }`}
               >
                 <XCircle className="w-4 h-4 text-rose-600" />
-                <span>ABSENT</span>
+                <span>Absen</span>
               </button>
             </div>
           </div>
@@ -139,7 +139,7 @@ export default function ManualAttendanceModal({ session, student, isOpen, onClos
             />
           </div>
 
-          <div className="pt-2 flex justify-end gap-2">
+          <div className="modal-footer max-sm:sticky max-sm:bottom-0 max-sm:-mx-6 max-sm:-mb-6 max-sm:px-6 max-sm:pb-6 max-sm:bg-white pt-2 max-sm:pt-3 flex justify-end gap-2 max-sm:border-t max-sm:border-slate-100">
             <button
               type="button"
               onClick={onClose}

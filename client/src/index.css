@@ -44,6 +44,30 @@
   }
 }
 
+/* Pengaman terakhir terhadap geser horizontal; penyebab lebar berlebih tetap diperbaiki di sumbernya */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Layar HP (< 640px). Di sm: ke atas tampilan tidak berubah. */
+@media (max-width: 639px) {
+  /* Isi minimal 14px, label kecil minimal 12px */
+  .text-xs {
+    font-size: 0.875rem;
+  }
+  .text-\[9px\],
+  .text-\[10px\],
+  .text-\[11px\] {
+    font-size: 0.75rem;
+  }
+
+  /* Tombol aksi di footer modal: area sentuh minimal 44px */
+  .modal-footer button {
+    min-height: 44px;
+  }
+}
+
 /* Glassmorphism & Modern Soft Shadows */
 .glass-panel {
   background: rgba(255, 255, 255, 0.85);

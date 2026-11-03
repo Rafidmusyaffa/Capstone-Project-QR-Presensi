@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../api';
 import { serverNowParts } from '../serverClock';
+import ScrollHint from '../components/ScrollHint';
 import LoadError from '../components/LoadError';
 import { ArrowLeft, Download, Printer, FileSpreadsheet } from 'lucide-react';
 
@@ -112,7 +113,7 @@ export default function ClassReport({ classId, onBack }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-indigo-600 transition-colors cursor-pointer py-1.5 px-3 rounded-xl hover:bg-slate-100"
+          className="inline-flex items-center gap-2 min-h-11 sm:min-h-0 text-xs font-bold text-slate-600 hover:text-indigo-600 transition-colors cursor-pointer py-1.5 px-3 rounded-xl hover:bg-slate-100"
         >
           <ArrowLeft className="w-4 h-4" /> Kembali
         </button>
@@ -120,15 +121,19 @@ export default function ClassReport({ classId, onBack }) {
         <div className="flex items-center gap-2">
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer active:scale-[0.98]"
+            className="flex items-center gap-2 min-h-11 sm:min-h-0 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer active:scale-[0.98]"
           >
-            <Download className="w-4 h-4" /> Export Excel (CSV)
+            <Download className="w-4 h-4" />
+            <span className="sm:hidden">Export CSV</span>
+            <span className="hidden sm:inline">Export Excel (CSV)</span>
           </button>
           <button
             onClick={handlePrint}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-200/80 shadow-xs transition-all cursor-pointer"
+            className="flex items-center gap-1.5 min-h-11 sm:min-h-0 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-200/80 shadow-xs transition-all cursor-pointer"
           >
-            <Printer className="w-4 h-4" /> Cetak Laporan
+            <Printer className="w-4 h-4" />
+            <span className="sm:hidden">Cetak</span>
+            <span className="hidden sm:inline">Cetak Laporan</span>
           </button>
         </div>
       </div>
@@ -188,13 +193,14 @@ export default function ClassReport({ classId, onBack }) {
           </div>
         </div>
 
+        <ScrollHint />
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200/70">
               <tr>
-                <th className="py-3 px-3.5 sticky left-0 bg-slate-50 z-10 w-12 text-center">No</th>
-                <th className="py-3 px-3.5 sticky left-12 bg-slate-50 z-10 font-mono w-28">NIM</th>
-                <th className="py-3 px-4 sticky left-40 bg-slate-50 z-10 min-w-[170px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">Nama Mahasiswa</th>
+                <th className="py-3 px-3.5 sm:sticky sm:left-0 bg-slate-50 sm:z-10 w-12 text-center">No</th>
+                <th className="py-3 px-3.5 sm:sticky sm:left-12 bg-slate-50 sm:z-10 font-mono w-28">NIM</th>
+                <th className="py-3 px-4 sticky left-0 sm:left-40 bg-slate-50 z-10 min-w-[140px] sm:min-w-[170px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">Nama Mahasiswa</th>
                 {sessions?.map((s) => (
                   <th key={s.id} className="py-3 px-2 text-center whitespace-nowrap min-w-[52px]">
                     <div className="font-bold text-slate-700">P#{s.meeting_number}</div>
@@ -211,9 +217,9 @@ export default function ClassReport({ classId, onBack }) {
             <tbody className="divide-y divide-slate-100">
               {recap?.map((r, idx) => (
                 <tr key={r.student.id} className="hover:bg-slate-50/60 transition-colors group">
-                  <td className="py-3 px-3.5 text-slate-400 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10">{idx + 1}</td>
-                  <td className="py-3 px-3.5 font-mono font-bold text-slate-700 sticky left-12 bg-white group-hover:bg-slate-50 z-10">{r.student.nim}</td>
-                  <td className="py-3 px-4 font-bold text-slate-900 sticky left-40 bg-white group-hover:bg-slate-50 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">{r.student.name}</td>
+                  <td className="py-3 px-3.5 text-slate-400 text-center sm:sticky sm:left-0 bg-white group-hover:bg-slate-50 sm:z-10">{idx + 1}</td>
+                  <td className="py-3 px-3.5 font-mono font-bold text-slate-700 sm:sticky sm:left-12 bg-white group-hover:bg-slate-50 sm:z-10">{r.student.nim}</td>
+                  <td className="py-3 px-4 font-bold text-slate-900 sticky left-0 sm:left-40 bg-white group-hover:bg-slate-50 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">{r.student.name}</td>
                   {r.sessions.map((s) => (
                     <td key={s.sessionId} className="py-3 px-2 text-center">
                       <div className="inline-flex flex-col items-center gap-1">

@@ -274,7 +274,7 @@ export default function MahasiswaDashboard({ user }) {
                     {cls.schedules && cls.schedules.length > 0 && (
                       <div className="mt-3 pt-2.5 border-t border-slate-200/60 text-xs text-slate-600 flex items-center gap-1.5 font-medium">
                         <Clock className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                        <span className="truncate">
+                        <span className="min-w-0 break-words sm:truncate">
                           {cls.schedules[0].day_of_week}, {cls.schedules[0].start_time} - {cls.schedules[0].end_time} • {cls.schedules[0].room}
                         </span>
                       </div>

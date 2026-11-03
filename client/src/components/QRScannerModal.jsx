@@ -246,9 +246,9 @@ export default function QRScannerModal({ session, isOpen, onClose, onScanSuccess
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-start sm:items-center-safe justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain animate-in fade-in zoom-in-95 duration-200">
         {/* Modal Header */}
-        <div className="bg-slate-900 text-white p-4 sm:p-4.5 sm:px-6 flex items-center justify-between gap-3">
+        <div className="bg-slate-900 text-white p-4 sm:p-4.5 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
           <div className="flex items-center gap-3 min-w-0">
             <div className="hidden sm:block p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl">
               <Camera className="w-5 h-5" />
@@ -262,7 +262,8 @@ export default function QRScannerModal({ session, isOpen, onClose, onScanSuccess
           </div>
           <button
             onClick={handleClose}
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            aria-label="Tutup scanner"
+            className="shrink-0 text-slate-400 hover:text-white p-2.5 -m-1 sm:m-0 sm:p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -284,7 +285,7 @@ export default function QRScannerModal({ session, isOpen, onClose, onScanSuccess
         {/* Modal Body - Scanner Only */}
         <div className="p-4 sm:p-6">
           <div>
-            <div className="relative mx-auto max-w-[320px] aspect-square rounded-2xl overflow-hidden bg-slate-900 border-4 border-indigo-600/30 flex items-center justify-center shadow-inner">
+            <div className="relative mx-auto w-full max-w-[320px] aspect-square rounded-2xl overflow-hidden bg-slate-900 border-4 border-indigo-600/30 flex items-center justify-center shadow-inner">
               <div id="qr-reader-target" className="w-full h-full"></div>
               {!isCameraActive && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-white bg-slate-900">
@@ -311,7 +312,7 @@ export default function QRScannerModal({ session, isOpen, onClose, onScanSuccess
             <button
               type="button"
               onClick={() => setIsManualOpen((v) => !v)}
-              className="mx-auto flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-indigo-600 cursor-pointer"
+              className="mx-auto flex items-center gap-1.5 min-h-11 sm:min-h-0 text-xs font-bold text-slate-500 hover:text-indigo-600 cursor-pointer"
             >
               <Keyboard className="w-3.5 h-3.5" />
               {isManualOpen ? 'Sembunyikan input token manual' : 'Kamera bermasalah? Input token manual'}
@@ -327,12 +328,12 @@ export default function QRScannerModal({ session, isOpen, onClose, onScanSuccess
                   autoComplete="off"
                   autoCapitalize="off"
                   spellCheck={false}
-                  className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                  className="flex-1 min-w-0 min-h-11 sm:min-h-0 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                 />
                 <button
                   type="submit"
                   disabled={!manualToken.trim()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="shrink-0 min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Proses
                 </button>
@@ -361,8 +362,8 @@ export default function QRScannerModal({ session, isOpen, onClose, onScanSuccess
                 <XCircle className="w-6 h-6 text-rose-600 shrink-0 mt-0.5" />
               )}
 
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-extrabold text-sm">
                     {scanResult.type === 'success'
                       ? scanResult.status === 'PRESENT'
@@ -387,7 +388,7 @@ export default function QRScannerModal({ session, isOpen, onClose, onScanSuccess
                   <p className="text-xs mt-1 leading-relaxed font-medium">{scanResult.message}</p>
                 )}
                 {scanResult.student && (
-                  <div className="mt-2 pt-2 border-t border-current/20 text-xs flex items-center gap-2">
+                  <div className="mt-2 pt-2 border-t border-current/20 text-xs flex flex-wrap items-center gap-x-2 gap-y-1">
                     <User className="w-3.5 h-3.5" />
                     <span className="font-bold">{scanResult.student.name}</span>
                     <span className="font-mono">({scanResult.student.nim})</span>
@@ -399,7 +400,7 @@ export default function QRScannerModal({ session, isOpen, onClose, onScanSuccess
         </div>
 
         {/* Modal Footer */}
-        <div className="bg-slate-50 border-t border-slate-100 px-6 py-3.5 flex justify-between items-center">
+        <div className="modal-footer sticky bottom-0 bg-slate-50 border-t border-slate-100 px-4 sm:px-6 py-3 sm:py-3.5 flex justify-between items-center gap-3">
           {isCameraActive ? (
             <button
               onClick={startCamera}
@@ -410,7 +411,7 @@ export default function QRScannerModal({ session, isOpen, onClose, onScanSuccess
           ) : <div />}
           <button
             onClick={handleClose}
-            className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl cursor-pointer transition-colors"
+            className="px-6 sm:px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl cursor-pointer transition-colors"
           >
             Tutup
           </button>
